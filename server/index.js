@@ -4,7 +4,7 @@ import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { DEFAULT_RULES, DEFAULT_TARGET_PCT, startRound, act, view, sha256 } from './engine.js';
 import * as holdem from './holdem.js';
-import { one, all, run, tx, log, verifyLog, now, getSetting, setSetting, currentNight, backup, BACKUP_DIR } from './db.js';
+import { one, all, run, tx, log, verifyLog, now, getSetting, setSetting, currentNight, backup, checkpoint, db, BACKUP_DIR } from './db.js';
 
 const PORT = Number(process.env.BJ_PORT || 7021);
 const ADMIN_PIN = () => getSetting('adminPin', process.env.BJ_ADMIN_PIN || '2121');
@@ -367,5 +367,14 @@ createServer(async (req, res) => {
   const daily = () => { try { const f = backup(); if (f) console.log('Respaldo guardado:', f); } catch (e) { console.error('Respaldo falló:', e.message); } };
   daily();
   setInterval(daily, 3600000);
+  setInterval(() => { try { checkpoint(); } catch { /* ocupado, se intenta en el siguiente minuto */ } }, 60000);
   console.log(`21 Blackjack servidor listo en el puerto ${PORT}`);
 });
+
+// Al cerrar (Ctrl+C o la X de la ventana en Windows) se guarda todo en blackjack.db antes de salir.
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+  process.on(sig, () => {
+    try { checkpoint(); db.close(); } catch (e) { console.error('No se pudo cerrar la base:', e.message); }
+    process.exit(0);
+  });
+}

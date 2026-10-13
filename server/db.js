@@ -72,6 +72,9 @@ export function currentNight() {
     || one('SELECT * FROM nights WHERE id = ?', run('INSERT INTO nights (opened_at) VALUES (?)', now()).lastInsertRowid);
 }
 
+// Pasa a blackjack.db lo que siga en blackjack.db-wal, para que el archivo .db solo ya tenga todo.
+export function checkpoint() { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); }
+
 // Respaldo: una copia por día en la carpeta respaldos/ junto a la base; se guardan las últimas 30.
 export const BACKUP_DIR = process.env.BJ_BACKUPS || join(dirname(DB_PATH), 'respaldos');
 export function backup(force = false) {
