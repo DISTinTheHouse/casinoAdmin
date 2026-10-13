@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, getConfig, setConfig, money } from './api.js';
 import useCardReader from './useCardReader.js';
 import { sfx, soundOn, setSound } from './sounds.js';
+import useUpdate from './update.js';
 
 const CHIPS = [1000, 5000, 10000, 50000]; // centavos: $10, $50, $100, $500
 const IDLE_MS = 120000;
@@ -36,13 +37,15 @@ export default function App() {
     else if (!state?.card) call('open', { uid });
   });
 
+  const update = useUpdate(cfg?.server, 'game');
+
   if (!cfg) return <Setup onSave={(c) => { setConfig(c); setCfg(c); }} />;
   return (
     <div className="felt">
       <Header state={state} onReset={() => { setConfig(null); setCfg(null); }} onExit={() => call('close')} />
       {!state ? <div className="center muted">Conectando…</div>
         : state.card ? <Table state={state} call={call} />
-        : <Idle onDemo={import.meta.env.DEV ? (uid) => call('open', { uid }) : null} />}
+        : <Idle update={update} onDemo={import.meta.env.DEV ? (uid) => call('open', { uid }) : null} />}
       {state && <Rules rules={state.rules} />}
       {error && <div className="toast">{error}</div>}
       {offline && <div className="offline">Sin conexión con el servidor. Reintentando…</div>}
@@ -72,12 +75,19 @@ function Header({ state, onReset, onExit }) {
   );
 }
 
-function Idle({ onDemo }) {
+function Idle({ onDemo, update }) {
   return (
     <div className="center idle">
       <div className="nfc"><div className="card-icon">21</div></div>
       <h1>Acerca tu tarjeta</h1>
       <p className="muted">para empezar a jugar</p>
+      {update.version && (
+        <div className="update">
+          {update.state === 'installing' ? 'Actualizando… la mesa se reinicia sola.'
+            : <>Hay una versión nueva ({update.version}) <button className="ghost" onClick={update.install}>Actualizar ahora</button></>}
+          {update.state && update.state !== 'installing' && <small>{update.state}</small>}
+        </div>
+      )}
       {onDemo && <button className="ghost" onClick={() => onDemo(prompt('Número de tarjeta') || '')}>Tarjeta de prueba</button>}
     </div>
   );

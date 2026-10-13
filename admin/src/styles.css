@@ -125,3 +125,4 @@ tbody tr:hover { background: var(--hover); }
 .confirm { width: min(620px, 100%); }
 .confirm h2 { margin: 0 0 4px; font-size: 18px; }
 @media (max-width: 760px) { .form { grid-template-columns: 1fr; } .grid.kpis.three { grid-template-columns: 1fr; } }
+.update-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 16px; background: var(--hover); border-bottom: 1px solid var(--line); }

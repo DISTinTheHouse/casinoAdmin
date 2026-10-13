@@ -10,13 +10,45 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-    "windows": [{ "title": "21 Blackjack Admin", "width": 1280, "height": 820, "minWidth": 900, "minHeight": 600 }],
-    "security": { "csp": null }
+    "windows": [
+      {
+        "title": "21 Blackjack Admin",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-    "windows": { "webviewInstallMode": { "type": "embedBootstrapper" } }
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJBODcxOEMyMUZCMEJFRDAKUldUUXZyQWZ3aGlIdWdFa21Ta1RNZm05ckUxVnZGKzZyRGQvRnVER281TXNDd1IvWGhnV0FUMTQK",
+      "dangerousInsecureTransportProtocol": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
