@@ -5,7 +5,9 @@ import { shoe, newSeed, sha256, cardView } from './engine.js';
 // Ciega: paga solo si el jugador gana con escalera o mejor (si no, empata).
 export const BLIND_PAYS = { 9: 500, 8: 50, 7: 10, 6: 3, 5: 1.5, 4: 1 };
 export const NAMES = ['Carta alta', 'Par', 'Dos pares', 'Tercia', 'Escalera', 'Color', 'Full', 'Póker', 'Escalera de color', 'Escalera real'];
-export const DEFAULT_HOLDEM = { winCommissionPct: 40 };
+// Límites del Ante en centavos ($10 a $500): con Ante + Ciega + 4× el jugador arriesga hasta 6 veces el Ante.
+// La tabla de la Ciega y la apuesta de 3× se pueden cambiar en el admin (igual para todos).
+export const DEFAULT_HOLDEM = { winCommissionPct: 40, minBet: 1000, maxBet: 50000, allow3x: true, blindPays: BLIND_PAYS };
 
 const value = (c) => (c % 13 === 0 ? 14 : (c % 13) + 1); // 2..14, As = 14
 const suit = (c) => Math.floor(c / 13) % 4;
@@ -52,7 +54,7 @@ export function startRound(rules, ante, seed = newSeed(), deck = shoe(seed, 1)) 
 // Antes del flop: apostar 4x o 3x. En el flop: 2x. Al final: 1x o retirarse. Pasar sigue a la siguiente calle.
 export function options(st) {
   const p = st.phase === 'player', s = st.street;
-  return { bet4: p && s === 0, bet3: p && s === 0, bet2: p && s === 1, bet1: p && s === 2, check: p && s < 2, fold: p && s === 2 };
+  return { bet4: p && s === 0, bet3: p && s === 0 && st.rules.allow3x !== false, bet2: p && s === 1, bet1: p && s === 2, check: p && s < 2, fold: p && s === 2 };
 }
 
 // Devuelve { st, extraBet }: extraBet es la apuesta de Juego que hay que cobrar del saldo.
@@ -76,7 +78,7 @@ function settle(st) {
     const c = compare(ph, dh);
     if (c > 0) {
       result = 'gana';
-      payout = st.play * 2 + (qualifies ? st.ante * 2 : st.ante) + st.blind + Math.floor(st.blind * (BLIND_PAYS[ph[0]] || 0));
+      payout = st.play * 2 + (qualifies ? st.ante * 2 : st.ante) + st.blind + Math.floor(st.blind * ((st.rules.blindPays || BLIND_PAYS)[ph[0]] || 0));
     } else if (c === 0) { result = 'empate'; payout = total; }
     else { result = 'pierde'; payout = qualifies ? 0 : st.ante; }
   }

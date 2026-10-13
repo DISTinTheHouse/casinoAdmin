@@ -34,7 +34,7 @@ const viewOf = (st) => (isHoldem(st) ? holdem.view(st) : view(st));
 function machineState(m) {
   const r = openRound(m);
   return { machine: m.name, card: cardOf(m) || null, round: r ? viewOf(JSON.parse(r.state)) : null,
-    rules: rules(), holdem: { ...holdemRules(), blindPays: holdem.BLIND_PAYS }, limits: limits() };
+    rules: rules(), holdem: holdemRules(), limits: limits() };
 }
 
 function finishRound(roundId, st, m) {
@@ -106,7 +106,7 @@ const machineRoutes = {
     const c = cardOf(m), amount = Math.round(Number(ante));
     if (!c) fail(409, 'Acerca tu tarjeta');
     if (openRound(m)) fail(409, 'Ya hay una mano en juego');
-    const { minBet, maxBet } = limits();
+    const { minBet, maxBet } = holdemRules();
     if (!(amount >= minBet && amount <= maxBet)) fail(400, 'Apuesta fuera de límites');
     if (c.balance < amount * 3) fail(402, 'Saldo insuficiente: necesitas 3 veces el Ante');
     run('UPDATE cards SET balance = balance - ? WHERE uid = ?', amount * 2, c.uid);
@@ -277,7 +277,17 @@ const adminRoutes = {
       winCommissionPct: Math.min(50, Math.max(0, Number(b.rules?.winCommissionPct ?? r.winCommissionPct))),
     };
     setSetting('rules', next);
-    if (b.holdem?.winCommissionPct != null) setSetting('holdemRules', { winCommissionPct: Math.min(50, Math.max(0, Number(b.holdem.winCommissionPct) || 0)) });
+    if (b.holdem) {
+      const h = holdemRules(), min = b.holdem.minBet != null ? pesos(b.holdem.minBet) : h.minBet, max = b.holdem.maxBet != null ? pesos(b.holdem.maxBet) : h.maxBet;
+      if (!(min > 0 && max >= min)) fail(400, 'Revisa el Ante mínimo y máximo');
+      const pays = Object.fromEntries(Object.entries(holdem.BLIND_PAYS).map(([k]) => {
+        const v = Number(b.holdem.blindPays?.[k] ?? h.blindPays[k]);
+        if (!(v >= 0 && v <= 1000)) fail(400, 'Revisa la tabla de la Ciega');
+        return [k, v];
+      }));
+      setSetting('holdemRules', { winCommissionPct: Math.min(50, Math.max(0, Number(b.holdem.winCommissionPct ?? h.winCommissionPct) || 0)),
+        minBet: min, maxBet: max, allow3x: typeof b.holdem.allow3x === 'boolean' ? b.holdem.allow3x : h.allow3x, blindPays: pays });
+    }
     if (b.targetPct != null) setSetting('targetPct', Math.min(50, Math.max(0, Number(b.targetPct))));
     if (b.limits) setSetting('limits', { minBet: pesos(b.limits.minBet), maxBet: pesos(b.limits.maxBet) });
     if (b.adminPin) setSetting('adminPin', String(b.adminPin));
@@ -293,6 +303,8 @@ const adminRoutes = {
       w.once('message', ok); w.once('error', ko);
     }).catch((e) => { delete simCache[g]; throw e; }));
   },
+  'GET /api/a/rules-history': () => all("SELECT id, at, data FROM log WHERE type = 'reglas' ORDER BY id DESC LIMIT 30")
+    .map((e) => ({ id: e.id, at: e.at, ...JSON.parse(e.data) })),
   'GET /api/a/log': () => all('SELECT id, at, type, data, hash FROM log ORDER BY id DESC LIMIT 200'),
   'GET /api/a/verify': () => verifyLog(),
 };

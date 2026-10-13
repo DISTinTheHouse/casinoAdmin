@@ -290,60 +290,236 @@ function Machines() {
   );
 }
 
+// Cada juego tiene su propio configurador; meta, PIN y respaldos van en General.
+const RULE_TABS = ['21 Blackjack', "Texas Hold'em", 'General'];
+
 function Rules() {
   const [s, load, err] = useApi('settings', 0);
-  const [form, setForm] = useState(null);
-  const [sim, setSim] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  useEffect(() => { if (s) setForm({ ...s.rules, holdemCommission: s.holdem.winCommissionPct, targetPct: s.targetPct, minBet: s.limits.minBet / 100, maxBet: s.limits.maxBet / 100, adminPin: '' }); }, [s]);
-  if (!form) return <Empty err={err} />;
-  const f = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
-  const save = async (e) => {
-    e.preventDefault();
-    try {
-      await api('settings', { rules: { decks: +form.decks, bjPays: form.bjPays, dealerHitsSoft17: form.dealerHitsSoft17 === true || form.dealerHitsSoft17 === 'true', winCommissionPct: +form.winCommissionPct },
-        holdem: { winCommissionPct: +form.holdemCommission }, targetPct: +form.targetPct, limits: { minBet: +form.minBet, maxBet: +form.maxBet }, adminPin: form.adminPin || undefined });
-      if (form.adminPin) setSession({ ...getSession(), pin: form.adminPin });
-      setSim(null); setMsg('Guardado. Las máquinas usan las reglas nuevas desde la siguiente mano.'); load();
-    } catch (x) { setMsg(x.message); }
-  };
-  const simulate = async (game) => { setBusy(game); try { setSim({ game, ...(await api('simulate', { game })) }); } catch (x) { setMsg(x.message); } setBusy(false); };
-
+  const [tab, setTab] = useState(RULE_TABS[0]);
+  if (!s) return <Empty err={err} />;
+  const Page = { '21 Blackjack': Rules21, "Texas Hold'em": RulesHoldem, General: RulesGeneral }[tab];
   return (
     <>
       <Head title="Reglas" sub="Iguales para todas las máquinas y todos los jugadores" />
-      <form className="panel form" onSubmit={save}>
-        <Field label="Barajas"><select value={form.decks} onChange={f('decks')}>{[1, 2, 4, 6, 8].map((d) => <option key={d}>{d}</option>)}</select></Field>
-        <Field label="Blackjack paga"><select value={form.bjPays} onChange={f('bjPays')}>{['3:2', '6:5', '1:1'].map((d) => <option key={d}>{d}</option>)}</select></Field>
-        <Field label="Crupier con 17 suave"><select value={String(form.dealerHitsSoft17)} onChange={f('dealerHitsSoft17')}>
-          <option value="true">Pide carta</option><option value="false">Se planta</option></select></Field>
-        <Field label="Comisión sobre ganancias en 21 %"><input type="number" min="0" max="50" step="0.5" value={form.winCommissionPct} onChange={f('winCommissionPct')} /></Field>
-        <Field label="Comisión sobre ganancias en Hold'em %"><input type="number" min="0" max="50" step="0.5" value={form.holdemCommission} onChange={f('holdemCommission')} /></Field>
-        <Field label="Meta de retención %"><input type="number" min="0" max="50" value={form.targetPct} onChange={f('targetPct')} /></Field>
-        <Field label="Apuesta mínima $"><input type="number" min="1" value={form.minBet} onChange={f('minBet')} /></Field>
-        <Field label="Apuesta máxima $"><input type="number" min="1" value={form.maxBet} onChange={f('maxBet')} /></Field>
-        <Field label="Nuevo PIN admin"><input type="password" value={form.adminPin} onChange={f('adminPin')} placeholder="Dejar vacío para no cambiar" /></Field>
-        <div className="row">
-          <button className="primary">Guardar</button>
-          <button type="button" onClick={() => { setForm({ ...form, ...s.recommended.rules, holdemCommission: s.recommended.holdem.winCommissionPct, targetPct: s.recommended.targetPct }); setMsg('Reglas recomendadas cargadas. Dale Guardar para aplicarlas.'); }}>Usar reglas recomendadas</button>
-          {msg && <span className="note">{msg}</span>}
+      <div className="subtabs">{RULE_TABS.map((t) => <button key={t} className={t === tab ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}</div>
+      <Page key={tab} s={s} load={load} />
+    </>
+  );
+}
+
+// Formulario de una sección: guarda solo sus propios campos.
+function useRulesForm(initial, toBody, load) {
+  const [form, setForm] = useState(initial);
+  const [msg, setMsg] = useState('');
+  const f = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const save = async (e) => {
+    e.preventDefault();
+    try { await api('settings', toBody(form)); setMsg('Guardado. Las máquinas usan las reglas nuevas desde la siguiente mano.'); load(); return true; }
+    catch (x) { setMsg(x.message); return false; }
+  };
+  return { form, setForm, f, save, msg, setMsg };
+}
+
+// ---------- Configurador de cada juego ----------
+// Cada juego describe sus campos; el mismo componente da secciones, ayudas, retención esperada contra real,
+// confirmación de cambios (antes → después) e historial.
+const yesNo = (v) => (v ? 'Sí' : 'No');
+const ratio = (x) => (+x === 0 ? 'Empata' : Number.isInteger(+x) ? `${x} a 1` : Number.isInteger(x * 2) ? `${x * 2} a 2` : `${x} a 1`);
+const opts = (list, fmt = String) => list.map((v) => [String(v), fmt(v)]);
+
+const GAMES = {
+  21: {
+    sim: ['Experto (estrategia básica)', 'Casual (pide hasta 17)'],
+    // Valores planos y comparables (dinero en pesos), desde lo que guarda el servidor o la bitácora.
+    flat: (x) => x.rules && x.limits && ({ ...x.rules, minBet: x.limits.minBet / 100, maxBet: x.limits.maxBet / 100 }),
+    recommended: (s) => ({ ...s.recommended.rules }),
+    body: (f) => ({ rules: { decks: +f.decks, bjPays: f.bjPays, dealerHitsSoft17: String(f.dealerHitsSoft17) === 'true', winCommissionPct: +f.winCommissionPct },
+      limits: { minBet: +f.minBet, maxBet: +f.maxBet } }),
+    sections: [
+      { title: 'Reglas de la mesa', fields: [
+        { key: 'decks', label: 'Barajas en el zapato', type: 'select', options: opts([1, 2, 4, 6, 8]), help: 'Más barajas = un poco más de ventaja para la casa y menos conteo de cartas.' },
+        { key: 'bjPays', label: 'Blackjack paga', type: 'select', options: opts(['3:2', '6:5', '1:1'], (v) => v.replace(':', ' a ')), help: '3 a 2 es el clásico; 6 a 5 sube la ventaja de la casa ≈1.4%.' },
+        { key: 'dealerHitsSoft17', label: 'Crupier con 17 suave', type: 'select', options: [['true', 'Pide carta'], ['false', 'Se planta']], fmt: (v) => (String(v) === 'true' ? 'Pide carta' : 'Se planta'), help: 'Que pida carta sube la ventaja de la casa ≈0.2%.' },
+      ] },
+      { title: 'Apuestas', fields: [
+        { key: 'minBet', label: 'Apuesta mínima', type: 'money' },
+        { key: 'maxBet', label: 'Apuesta máxima', type: 'money', help: 'Al doblar o dividir se puede arriesgar hasta 2 veces esta apuesta.' },
+      ] },
+      { title: 'Comisión', fields: [
+        { key: 'winCommissionPct', label: 'Comisión sobre ganancias', type: 'pct', help: 'Se descuenta solo de lo que el jugador gana, nunca de lo apostado. Se le muestra en la mesa.' },
+      ] },
+    ],
+    player: (f) => `Blackjack paga ${f.bjPays.replace(':', ' a ')} · El crupier ${String(f.dealerHitsSoft17) === 'true' ? 'pide' : 'se planta'} en 17 suave${+f.winCommissionPct > 0 ? ` · Comisión de ${f.winCommissionPct}% sobre ganancias` : ''}`,
+  },
+  holdem: {
+    sim: ['Experto (apuesta con buenas manos)', 'Casual (solo apuesta al final con par)'],
+    flat: (x) => x.holdem && ({ winCommissionPct: x.holdem.winCommissionPct, allow3x: x.holdem.allow3x ?? true,
+      minBet: x.holdem.minBet != null ? x.holdem.minBet / 100 : undefined, maxBet: x.holdem.maxBet != null ? x.holdem.maxBet / 100 : undefined,
+      ...Object.fromEntries(Object.entries(x.holdem.blindPays || {}).map(([k, v]) => [`pay${k}`, v])) }),
+    recommended: (s) => GAMES.holdem.flat({ holdem: s.recommended.holdem }),
+    body: (f) => ({ holdem: { winCommissionPct: +f.winCommissionPct, minBet: +f.minBet, maxBet: +f.maxBet, allow3x: String(f.allow3x) === 'true',
+      blindPays: Object.fromEntries([4, 5, 6, 7, 8, 9].map((k) => [k, +f[`pay${k}`]])) } }),
+    sections: [
+      { title: 'Reglas de la mesa', fields: [
+        { key: 'allow3x', label: 'Apuesta antes del flop', type: 'select', options: [['true', '4× o 3× el Ante'], ['false', 'Solo 4× el Ante']], fmt: (v) => (String(v) === 'true' ? '4× o 3×' : 'Solo 4×'), help: 'Quitar el 3× es más simple para el jugador; casi no cambia la ventaja.' },
+      ] },
+      { title: 'Apuestas', fields: [
+        { key: 'minBet', label: 'Ante mínimo', type: 'money', help: 'La Ciega es igual al Ante. Para repartir se pide en saldo 3 veces el Ante.' },
+        { key: 'maxBet', label: 'Ante máximo', type: 'money', help: 'Con Ante + Ciega + 4× el jugador arriesga hasta 6 veces el Ante por mano.' },
+      ] },
+      { title: 'La Ciega paga (si gana el jugador)', fields: [
+        { key: 'pay9', label: 'Escalera real', type: 'select', options: opts([500, 300, 200, 100], ratio) },
+        { key: 'pay8', label: 'Escalera de color', type: 'select', options: opts([100, 50, 40, 30], ratio) },
+        { key: 'pay7', label: 'Póker', type: 'select', options: opts([10, 9, 8], ratio) },
+        { key: 'pay6', label: 'Full', type: 'select', options: opts([3, 2], ratio) },
+        { key: 'pay5', label: 'Color', type: 'select', options: opts([1.5, 1], ratio) },
+        { key: 'pay4', label: 'Escalera', type: 'select', options: opts([1, 0], ratio), help: 'Con menos de escalera la Ciega siempre empata. Bajar estos pagos sube la ventaja de la casa.' },
+      ] },
+      { title: 'Comisión', fields: [
+        { key: 'winCommissionPct', label: 'Comisión sobre ganancias', type: 'pct', help: 'Se descuenta solo de lo que el jugador gana en la mano, nunca de lo apostado. Se le muestra en la mesa.' },
+      ] },
+    ],
+    player: (f) => `Juegas contra el crupier con tus 2 cartas y las 5 de la mesa · El crupier califica con par o mejor${+f.winCommissionPct > 0 ? ` · Comisión de ${f.winCommissionPct}% sobre ganancias` : ''}`,
+  },
+};
+const fieldsOf = (g) => GAMES[g].sections.flatMap((x) => x.fields);
+const show = (field, v) => (v == null ? '—' : field.fmt ? field.fmt(v) : field.type === 'money' ? money(v * 100)
+  : field.type === 'pct' ? `${v}%` : field.options ? (field.options.find(([o]) => o === String(v))?.[1] ?? String(v)) : String(v));
+const diff = (g, a, b) => fieldsOf(g).filter((x) => a?.[x.key] != null && b?.[x.key] != null && String(a[x.key]) !== String(b[x.key]))
+  .map((x) => ({ label: x.label, from: show(x, a[x.key]), to: show(x, b[x.key]) }));
+
+const Rules21 = (p) => <GameConfig game="21" {...p} />;
+const RulesHoldem = (p) => <GameConfig game="holdem" {...p} />;
+
+function GameConfig({ game, s, load }) {
+  const G = GAMES[game];
+  const saved = G.flat(s);
+  const [form, setForm] = useState(saved);
+  const [confirming, setConfirming] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [sim, setSim] = useState(null);
+  const [simBusy, setSimBusy] = useState(false);
+  const [summary] = useApi('summary', 15000);
+  const [history, loadHistory] = useApi('rules-history', 0);
+  const runSim = useCallback(async () => {
+    setSimBusy(true);
+    try { setSim(await api('simulate', { game })); } catch (x) { setMsg(x.message); }
+    setSimBusy(false);
+  }, [game]);
+  useEffect(() => { runSim(); }, [runSim]);
+
+  const changes = diff(game, saved, form);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const save = async () => {
+    try {
+      await api('settings', G.body(form));
+      setConfirming(false); setMsg('Guardado. Las máquinas usan las reglas nuevas desde la siguiente mano.');
+      await load(); loadHistory(); runSim();
+    } catch (x) { setConfirming(false); setMsg(x.message); }
+  };
+  const real = summary?.byGame.find((x) => x.game === game);
+  const target = s.targetPct;
+  const tone = (v) => (v == null ? '' : v >= target ? 'good' : 'bad');
+  // Historial: cada guardado de la bitácora comparado con el anterior, solo con los campos de este juego.
+  const past = (history || []).map((e, i, arr) => ({ at: e.at, changes: diff(game, G.flat(arr[i + 1] || {}), G.flat(e)) }))
+    .filter((e) => e.changes.length).slice(0, 8);
+
+  return (
+    <>
+      <div className="grid kpis three">
+        <div className="kpi">
+          <small>Retención esperada (simulador)</small>
+          <b className={tone(sim?.basica.retencionPct)}>{sim ? `${pct(sim.basica.retencionPct)} – ${pct(sim.casual.retencionPct)}` : simBusy ? 'Calculando…' : '—'}</b>
+          <small>De jugador experto a casual, con las reglas guardadas</small>
         </div>
-      </form>
+        <div className="kpi">
+          <small>Retención real esta noche</small>
+          <b className={real ? tone(real.retentionPct) : ''}>{real ? pct(real.retentionPct) : '—'}</b>
+          <small>{real ? `${real.hands.toLocaleString('es-MX')} manos · ${money(real.bet)} apostado` : 'Aún no hay manos de este juego'}</small>
+        </div>
+        <div className="kpi">
+          <small>Meta de retención</small>
+          <b>{pct(target)}</b>
+          <small>Se cambia en General</small>
+        </div>
+      </div>
+
+      {G.sections.map((sec) => (
+        <section key={sec.title}>
+          <h3>{sec.title}</h3>
+          <div className="panel form">
+            {sec.fields.map((x) => (
+              <label key={x.key} className={'field' + (String(saved[x.key]) !== String(form[x.key]) ? ' changed' : '')}>
+                <span>{x.label}</span>
+                {x.options ? <select value={String(form[x.key])} onChange={set(x.key)}>{x.options.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>
+                  : <div className="unit"><input type="number" min="0" step={x.type === 'pct' ? 0.5 : 1} max={x.type === 'pct' ? 50 : undefined}
+                    value={form[x.key]} onChange={set(x.key)} /><em>{x.type === 'money' ? '$' : '%'}</em></div>}
+                {x.help && <small className="help">{x.help}</small>}
+              </label>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <h3>Así lo ve el jugador</h3>
+      <div className="panel preview">{G.player(form)}</div>
+
+      <div className={'savebar' + (changes.length ? ' dirty' : '')}>
+        <span>{changes.length ? `${changes.length} ${changes.length === 1 ? 'cambio sin guardar' : 'cambios sin guardar'}` : msg || 'Sin cambios'}</span>
+        <span className="spacer" />
+        <button type="button" onClick={() => { setForm({ ...form, ...G.recommended(s) }); setMsg(''); }}>Usar reglas recomendadas</button>
+        <button type="button" disabled={!changes.length} onClick={() => setForm(saved)}>Descartar</button>
+        <button type="button" className="primary" disabled={!changes.length} onClick={() => setConfirming(true)}>Revisar y guardar</button>
+      </div>
+
+      {confirming && (
+        <div className="modal" onClick={() => setConfirming(false)}>
+          <div className="panel confirm" onClick={(e) => e.stopPropagation()}>
+            <h2>¿Guardar estos cambios?</h2>
+            <p className="dim">Aplican a todas las máquinas de {game === 'holdem' ? "Texas Hold'em" : '21'} desde la siguiente mano. Quedan en la bitácora.</p>
+            <Table cols={['Regla', 'Antes', 'Después']} rows={changes.map((c) => [c.label, <span className="dim">{c.from}</span>, <b>{c.to}</b>])} />
+            <div className="row" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirming(false)}>Cancelar</button>
+              <button className="primary" onClick={save}>Guardar cambios</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <h3>Simulador</h3>
       <div className="panel">
-        <p className="dim">Juega 100,000 manos con las reglas guardadas y calcula cuánto retiene la casa de lo apostado.</p>
         <div className="row">
-          <button onClick={() => simulate('21')} disabled={!!busy}>{busy === '21' ? 'Simulando…' : 'Simular 21'}</button>
-          <button onClick={() => simulate('holdem')} disabled={!!busy}>{busy === 'holdem' ? 'Simulando…' : "Simular Hold'em"}</button>
+          <span className="dim" style={{ flex: 1 }}>Juega 100,000 manos con las reglas guardadas y calcula cuánto retiene la casa de lo apostado.</span>
+          <button onClick={runSim} disabled={simBusy}>{simBusy ? 'Simulando…' : 'Volver a simular'}</button>
         </div>
-        {sim && <Table cols={[`${GAME[sim.game]} · tipo de jugador`, 'Ventaja por reglas', 'Retención esperada', `Comisión para llegar a ${pct(s.targetPct)}`]} rows={[
-          [sim.game === 'holdem' ? 'Experto (apuesta con buenas manos)' : 'Experto (estrategia básica)', pct(sim.basica.ventajaReglasPct), pct(sim.basica.retencionPct), `≈ ${sim.basica.comisionParaMeta}%`],
-          [sim.game === 'holdem' ? 'Casual (solo apuesta al final con par)' : 'Casual (pide hasta 17)', pct(sim.casual.ventajaReglasPct), pct(sim.casual.retencionPct), `≈ ${sim.casual.comisionParaMeta}%`],
+        {sim && <Table cols={['Tipo de jugador', 'Ventaja por reglas', 'Retención esperada', `Comisión para llegar a ${pct(target)}`]} rows={[
+          [G.sim[0], pct(sim.basica.ventajaReglasPct), <span className={tone(sim.basica.retencionPct)}>{pct(sim.basica.retencionPct)}</span>, `≈ ${sim.basica.comisionParaMeta}%`],
+          [G.sim[1], pct(sim.casual.ventajaReglasPct), <span className={tone(sim.casual.retencionPct)}>{pct(sim.casual.retencionPct)}</span>, `≈ ${sim.casual.comisionParaMeta}%`],
         ]} />}
       </div>
 
+      <h3>Historial de cambios</h3>
+      {past.length ? <Table cols={['Fecha', 'Cambios']} rows={past.map((e) => [time(e.at),
+        e.changes.map((c) => <div key={c.label}>{c.label}: <span className="dim">{c.from}</span> → <b>{c.to}</b></div>)])} />
+        : <div className="panel dim">Sin cambios registrados todavía.</div>}
+    </>
+  );
+}
+
+function RulesGeneral({ s, load }) {
+  const { form, setForm, f, save, msg, setMsg } = useRulesForm({ targetPct: s.targetPct, adminPin: '' },
+    (x) => ({ targetPct: +x.targetPct, adminPin: x.adminPin || undefined }), load);
+  const saveAll = async (e) => { if ((await save(e)) && form.adminPin) { setSession({ ...getSession(), pin: form.adminPin }); setForm({ ...form, adminPin: '' }); } };
+  return (
+    <>
+      <form className="panel form" onSubmit={saveAll}>
+        <Field label="Meta de retención % (todos los juegos)"><input type="number" min="0" max="50" value={form.targetPct} onChange={f('targetPct')} /></Field>
+        <Field label="Nuevo PIN admin"><input type="password" value={form.adminPin} onChange={f('adminPin')} placeholder="Dejar vacío para no cambiar" /></Field>
+        <div className="row">
+          <button className="primary">Guardar</button>
+          {msg && <span className="note">{msg}</span>}
+        </div>
+      </form>
       <h3>Respaldos</h3>
       <div className="panel row">
         <span className="dim" style={{ flex: 1 }}>El servidor guarda una copia de la base de datos cada día y al cerrar cada noche (se conservan 30).</span>
