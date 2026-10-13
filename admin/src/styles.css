@@ -107,3 +107,6 @@ tbody tr:hover { background: var(--hover); }
 }
 
 @media (max-width: 760px) { .grid.kpis { grid-template-columns: repeat(2, 1fr); } .form { grid-template-columns: 1fr; } .brand .slash, .brand .slash + * { display: none; } }
+.subtabs { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 16px; background: var(--hover); border-radius: 10px; }
+.subtabs button { border: 0; background: none; color: var(--dim); padding: 8px 16px; border-radius: 8px; }
+.subtabs button.on { background: var(--panel); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }

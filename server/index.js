@@ -106,7 +106,7 @@ const machineRoutes = {
     const c = cardOf(m), amount = Math.round(Number(ante));
     if (!c) fail(409, 'Acerca tu tarjeta');
     if (openRound(m)) fail(409, 'Ya hay una mano en juego');
-    const { minBet, maxBet } = limits();
+    const { minBet, maxBet } = holdemRules();
     if (!(amount >= minBet && amount <= maxBet)) fail(400, 'Apuesta fuera de límites');
     if (c.balance < amount * 3) fail(402, 'Saldo insuficiente: necesitas 3 veces el Ante');
     run('UPDATE cards SET balance = balance - ? WHERE uid = ?', amount * 2, c.uid);
@@ -277,7 +277,11 @@ const adminRoutes = {
       winCommissionPct: Math.min(50, Math.max(0, Number(b.rules?.winCommissionPct ?? r.winCommissionPct))),
     };
     setSetting('rules', next);
-    if (b.holdem?.winCommissionPct != null) setSetting('holdemRules', { winCommissionPct: Math.min(50, Math.max(0, Number(b.holdem.winCommissionPct) || 0)) });
+    if (b.holdem) {
+      const h = holdemRules(), min = b.holdem.minBet != null ? pesos(b.holdem.minBet) : h.minBet, max = b.holdem.maxBet != null ? pesos(b.holdem.maxBet) : h.maxBet;
+      if (!(min > 0 && max >= min)) fail(400, 'Revisa el Ante mínimo y máximo');
+      setSetting('holdemRules', { winCommissionPct: Math.min(50, Math.max(0, Number(b.holdem.winCommissionPct ?? h.winCommissionPct) || 0)), minBet: min, maxBet: max });
+    }
     if (b.targetPct != null) setSetting('targetPct', Math.min(50, Math.max(0, Number(b.targetPct))));
     if (b.limits) setSetting('limits', { minBet: pesos(b.limits.minBet), maxBet: pesos(b.limits.maxBet) });
     if (b.adminPin) setSetting('adminPin', String(b.adminPin));

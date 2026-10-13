@@ -88,7 +88,7 @@ function Idle({ onDemo }) {
 }
 
 function Table({ state, call }) {
-  const { card, round, limits } = state;
+  const { card, round, holdem: limits } = state;
   const [ante, setAnte] = useState(() => Math.min(limits.minBet * 5, limits.maxBet));
   const [busy, setBusy] = useState(false);
   const lastTouch = useRef(Date.now());

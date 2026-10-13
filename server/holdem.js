@@ -5,7 +5,8 @@ import { shoe, newSeed, sha256, cardView } from './engine.js';
 // Ciega: paga solo si el jugador gana con escalera o mejor (si no, empata).
 export const BLIND_PAYS = { 9: 500, 8: 50, 7: 10, 6: 3, 5: 1.5, 4: 1 };
 export const NAMES = ['Carta alta', 'Par', 'Dos pares', 'Tercia', 'Escalera', 'Color', 'Full', 'Póker', 'Escalera de color', 'Escalera real'];
-export const DEFAULT_HOLDEM = { winCommissionPct: 40 };
+// Límites del Ante en centavos ($10 a $500): con Ante + Ciega + 4× el jugador arriesga hasta 6 veces el Ante.
+export const DEFAULT_HOLDEM = { winCommissionPct: 40, minBet: 1000, maxBet: 50000 };
 
 const value = (c) => (c % 13 === 0 ? 14 : (c % 13) + 1); // 2..14, As = 14
 const suit = (c) => Math.floor(c / 13) % 4;

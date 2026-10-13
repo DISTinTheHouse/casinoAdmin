@@ -290,60 +290,132 @@ function Machines() {
   );
 }
 
+// Cada juego tiene su propio configurador; meta, PIN y respaldos van en General.
+const RULE_TABS = ['21 Blackjack', "Texas Hold'em", 'General'];
+
 function Rules() {
   const [s, load, err] = useApi('settings', 0);
-  const [form, setForm] = useState(null);
-  const [sim, setSim] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-  useEffect(() => { if (s) setForm({ ...s.rules, holdemCommission: s.holdem.winCommissionPct, targetPct: s.targetPct, minBet: s.limits.minBet / 100, maxBet: s.limits.maxBet / 100, adminPin: '' }); }, [s]);
-  if (!form) return <Empty err={err} />;
-  const f = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
-  const save = async (e) => {
-    e.preventDefault();
-    try {
-      await api('settings', { rules: { decks: +form.decks, bjPays: form.bjPays, dealerHitsSoft17: form.dealerHitsSoft17 === true || form.dealerHitsSoft17 === 'true', winCommissionPct: +form.winCommissionPct },
-        holdem: { winCommissionPct: +form.holdemCommission }, targetPct: +form.targetPct, limits: { minBet: +form.minBet, maxBet: +form.maxBet }, adminPin: form.adminPin || undefined });
-      if (form.adminPin) setSession({ ...getSession(), pin: form.adminPin });
-      setSim(null); setMsg('Guardado. Las máquinas usan las reglas nuevas desde la siguiente mano.'); load();
-    } catch (x) { setMsg(x.message); }
-  };
-  const simulate = async (game) => { setBusy(game); try { setSim({ game, ...(await api('simulate', { game })) }); } catch (x) { setMsg(x.message); } setBusy(false); };
-
+  const [tab, setTab] = useState(RULE_TABS[0]);
+  if (!s) return <Empty err={err} />;
+  const Page = { '21 Blackjack': Rules21, "Texas Hold'em": RulesHoldem, General: RulesGeneral }[tab];
   return (
     <>
       <Head title="Reglas" sub="Iguales para todas las máquinas y todos los jugadores" />
+      <div className="subtabs">{RULE_TABS.map((t) => <button key={t} className={t === tab ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}</div>
+      <Page key={tab} s={s} load={load} />
+    </>
+  );
+}
+
+// Formulario de una sección: guarda solo sus propios campos.
+function useRulesForm(initial, toBody, load) {
+  const [form, setForm] = useState(initial);
+  const [msg, setMsg] = useState('');
+  const f = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const save = async (e) => {
+    e.preventDefault();
+    try { await api('settings', toBody(form)); setMsg('Guardado. Las máquinas usan las reglas nuevas desde la siguiente mano.'); load(); return true; }
+    catch (x) { setMsg(x.message); return false; }
+  };
+  return { form, setForm, f, save, msg, setMsg };
+}
+
+function Rules21({ s, load }) {
+  const { form, setForm, f, save, msg, setMsg } = useRulesForm(
+    { ...s.rules, minBet: s.limits.minBet / 100, maxBet: s.limits.maxBet / 100 },
+    (x) => ({ rules: { decks: +x.decks, bjPays: x.bjPays, dealerHitsSoft17: String(x.dealerHitsSoft17) === 'true', winCommissionPct: +x.winCommissionPct },
+      limits: { minBet: +x.minBet, maxBet: +x.maxBet } }), load);
+  return (
+    <>
       <form className="panel form" onSubmit={save}>
         <Field label="Barajas"><select value={form.decks} onChange={f('decks')}>{[1, 2, 4, 6, 8].map((d) => <option key={d}>{d}</option>)}</select></Field>
         <Field label="Blackjack paga"><select value={form.bjPays} onChange={f('bjPays')}>{['3:2', '6:5', '1:1'].map((d) => <option key={d}>{d}</option>)}</select></Field>
         <Field label="Crupier con 17 suave"><select value={String(form.dealerHitsSoft17)} onChange={f('dealerHitsSoft17')}>
           <option value="true">Pide carta</option><option value="false">Se planta</option></select></Field>
-        <Field label="Comisión sobre ganancias en 21 %"><input type="number" min="0" max="50" step="0.5" value={form.winCommissionPct} onChange={f('winCommissionPct')} /></Field>
-        <Field label="Comisión sobre ganancias en Hold'em %"><input type="number" min="0" max="50" step="0.5" value={form.holdemCommission} onChange={f('holdemCommission')} /></Field>
-        <Field label="Meta de retención %"><input type="number" min="0" max="50" value={form.targetPct} onChange={f('targetPct')} /></Field>
+        <Field label="Comisión sobre ganancias %"><input type="number" min="0" max="50" step="0.5" value={form.winCommissionPct} onChange={f('winCommissionPct')} /></Field>
         <Field label="Apuesta mínima $"><input type="number" min="1" value={form.minBet} onChange={f('minBet')} /></Field>
         <Field label="Apuesta máxima $"><input type="number" min="1" value={form.maxBet} onChange={f('maxBet')} /></Field>
-        <Field label="Nuevo PIN admin"><input type="password" value={form.adminPin} onChange={f('adminPin')} placeholder="Dejar vacío para no cambiar" /></Field>
         <div className="row">
           <button className="primary">Guardar</button>
-          <button type="button" onClick={() => { setForm({ ...form, ...s.recommended.rules, holdemCommission: s.recommended.holdem.winCommissionPct, targetPct: s.recommended.targetPct }); setMsg('Reglas recomendadas cargadas. Dale Guardar para aplicarlas.'); }}>Usar reglas recomendadas</button>
+          <button type="button" onClick={() => { setForm({ ...form, ...s.recommended.rules }); setMsg('Reglas recomendadas cargadas. Dale Guardar para aplicarlas.'); }}>Usar reglas recomendadas</button>
           {msg && <span className="note">{msg}</span>}
         </div>
       </form>
+      <Simulator game="21" target={s.targetPct} rows={['Experto (estrategia básica)', 'Casual (pide hasta 17)']} />
+    </>
+  );
+}
 
+const BLIND = [['Escalera real', '500 a 1'], ['Escalera de color', '50 a 1'], ['Póker', '10 a 1'], ['Full', '3 a 1'], ['Color', '3 a 2'], ['Escalera', '1 a 1'], ['Menos que escalera', 'Empata']];
+
+function RulesHoldem({ s, load }) {
+  const h = s.holdem, rec = s.recommended.holdem;
+  const { form, setForm, f, save, msg, setMsg } = useRulesForm(
+    { winCommissionPct: h.winCommissionPct, minBet: h.minBet / 100, maxBet: h.maxBet / 100 },
+    (x) => ({ holdem: { winCommissionPct: +x.winCommissionPct, minBet: +x.minBet, maxBet: +x.maxBet } }), load);
+  return (
+    <>
+      <form className="panel form" onSubmit={save}>
+        <Field label="Comisión sobre ganancias %"><input type="number" min="0" max="50" step="0.5" value={form.winCommissionPct} onChange={f('winCommissionPct')} /></Field>
+        <span />
+        <Field label="Ante mínimo $"><input type="number" min="1" value={form.minBet} onChange={f('minBet')} /></Field>
+        <Field label="Ante máximo $"><input type="number" min="1" value={form.maxBet} onChange={f('maxBet')} /></Field>
+        <p className="dim" style={{ gridColumn: '1 / -1', margin: 0 }}>
+          La Ciega es igual al Ante. Con la apuesta de 4× el jugador arriesga hasta 6 veces el Ante (con Ante máximo de {money(form.maxBet * 100)}: {money(form.maxBet * 600)} por mano).
+          Para repartir necesita en saldo 3 veces el Ante.
+        </p>
+        <div className="row">
+          <button className="primary">Guardar</button>
+          <button type="button" onClick={() => { setForm({ winCommissionPct: rec.winCommissionPct, minBet: rec.minBet / 100, maxBet: rec.maxBet / 100 }); setMsg('Reglas recomendadas cargadas. Dale Guardar para aplicarlas.'); }}>Usar reglas recomendadas</button>
+          {msg && <span className="note">{msg}</span>}
+        </div>
+      </form>
+      <h3>Cómo se juega</h3>
+      <div className="panel">
+        <p className="dim" style={{ marginTop: 0 }}>Antes del flop: apostar 4× o 3× el Ante, o pasar · Flop: 2× o pasar · Final: 1× o retirarse.
+          El crupier califica con par o mejor; si no califica, el Ante empata. Si gana el jugador, Juego y Ante pagan 1 a 1.</p>
+        <Table cols={['La Ciega paga (si gana el jugador)', '']} rows={BLIND} />
+      </div>
+      <Simulator game="holdem" target={s.targetPct} rows={['Experto (apuesta con buenas manos)', 'Casual (solo apuesta al final con par)']} />
+    </>
+  );
+}
+
+function Simulator({ game, target, rows }) {
+  const [sim, setSim] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const run = async () => { setBusy(true); try { setSim(await api('simulate', { game })); } catch (x) { setMsg(x.message); } setBusy(false); };
+  return (
+    <>
       <h3>Simulador</h3>
       <div className="panel">
         <p className="dim">Juega 100,000 manos con las reglas guardadas y calcula cuánto retiene la casa de lo apostado.</p>
-        <div className="row">
-          <button onClick={() => simulate('21')} disabled={!!busy}>{busy === '21' ? 'Simulando…' : 'Simular 21'}</button>
-          <button onClick={() => simulate('holdem')} disabled={!!busy}>{busy === 'holdem' ? 'Simulando…' : "Simular Hold'em"}</button>
-        </div>
-        {sim && <Table cols={[`${GAME[sim.game]} · tipo de jugador`, 'Ventaja por reglas', 'Retención esperada', `Comisión para llegar a ${pct(s.targetPct)}`]} rows={[
-          [sim.game === 'holdem' ? 'Experto (apuesta con buenas manos)' : 'Experto (estrategia básica)', pct(sim.basica.ventajaReglasPct), pct(sim.basica.retencionPct), `≈ ${sim.basica.comisionParaMeta}%`],
-          [sim.game === 'holdem' ? 'Casual (solo apuesta al final con par)' : 'Casual (pide hasta 17)', pct(sim.casual.ventajaReglasPct), pct(sim.casual.retencionPct), `≈ ${sim.casual.comisionParaMeta}%`],
+        <button onClick={run} disabled={busy}>{busy ? 'Simulando…' : 'Simular'}</button>
+        {msg && <span className="note">{msg}</span>}
+        {sim && <Table cols={['Tipo de jugador', 'Ventaja por reglas', 'Retención esperada', `Comisión para llegar a ${pct(target)}`]} rows={[
+          [rows[0], pct(sim.basica.ventajaReglasPct), pct(sim.basica.retencionPct), `≈ ${sim.basica.comisionParaMeta}%`],
+          [rows[1], pct(sim.casual.ventajaReglasPct), pct(sim.casual.retencionPct), `≈ ${sim.casual.comisionParaMeta}%`],
         ]} />}
       </div>
+    </>
+  );
+}
 
+function RulesGeneral({ s, load }) {
+  const { form, setForm, f, save, msg, setMsg } = useRulesForm({ targetPct: s.targetPct, adminPin: '' },
+    (x) => ({ targetPct: +x.targetPct, adminPin: x.adminPin || undefined }), load);
+  const saveAll = async (e) => { if ((await save(e)) && form.adminPin) { setSession({ ...getSession(), pin: form.adminPin }); setForm({ ...form, adminPin: '' }); } };
+  return (
+    <>
+      <form className="panel form" onSubmit={saveAll}>
+        <Field label="Meta de retención % (todos los juegos)"><input type="number" min="0" max="50" value={form.targetPct} onChange={f('targetPct')} /></Field>
+        <Field label="Nuevo PIN admin"><input type="password" value={form.adminPin} onChange={f('adminPin')} placeholder="Dejar vacío para no cambiar" /></Field>
+        <div className="row">
+          <button className="primary">Guardar</button>
+          {msg && <span className="note">{msg}</span>}
+        </div>
+      </form>
       <h3>Respaldos</h3>
       <div className="panel row">
         <span className="dim" style={{ flex: 1 }}>El servidor guarda una copia de la base de datos cada día y al cerrar cada noche (se conservan 30).</span>
