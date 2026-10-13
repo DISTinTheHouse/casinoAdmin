@@ -73,3 +73,10 @@ test('una mano siempre termina y nunca paga de más', () => {
     assert.ok(st.payout >= 0 && st.payout <= total + 4 * 1000 + 1000 + 500 * 1000);
   }
 });
+
+test('la tabla de la Ciega y el 3× se configuran desde las reglas', () => {
+  const r = { ...rules, allow3x: false, blindPays: { 9: 500, 8: 50, 7: 10, 6: 3, 5: 1.5, 4: 2 } };
+  const st = startRound(r, 100, 's', deck('9h 8d', 'Ac 2c', '7s 6c 5d Kh 3s'));
+  assert.equal(view(st).options.bet3, false);
+  assert.equal(act(st, 'bet4').st.payout, 400 * 2 + 100 + 100 + 200); // escalera: la Ciega paga 2 a 1
+});

@@ -6,6 +6,8 @@ import { sfx, soundOn, setSound } from './sounds.js';
 const CHIPS = [1000, 5000, 10000, 50000]; // centavos: $10, $50, $100, $500
 const IDLE_MS = 120000;
 const PAYS = [[9, 'Escalera real'], [8, 'Escalera de color'], [7, 'Póker'], [6, 'Full'], [5, 'Color'], [4, 'Escalera']];
+// 1.5 se muestra como "3 a 2"; 0 = la Ciega solo empata.
+export const ratio = (x) => (Number.isInteger(x) ? `${x} a 1` : Number.isInteger(x * 2) ? `${x * 2} a 2` : `${x} a 1`);
 const HINT = ['Antes del flop: apuesta 4× o 3× el Ante, o pasa', 'Flop: apuesta 2× el Ante o pasa', 'Última oportunidad: apuesta 1× el Ante o retírate'];
 
 export default function App() {
@@ -159,7 +161,7 @@ function Table({ state, call }) {
       <footer className="controls">
         {playing ? (
           <div>
-            <p className="hint">{HINT[round.street]}</p>
+            <p className="hint">{round.street === 0 && !round.options.bet3 ? 'Antes del flop: apuesta 4× el Ante o pasa' : HINT[round.street]}</p>
             <div className="actions">
               {round.options.bet4 && <Btn icon="4×" label={`Apostar ${money(round.ante * 4)}`} kind="double" onClick={() => bet(4)} disabled={!can(4)} />}
               {round.options.bet3 && <Btn icon="3×" label={`Apostar ${money(round.ante * 3)}`} kind="double" onClick={() => bet(3)} disabled={!can(3)} />}
@@ -186,7 +188,7 @@ function Table({ state, call }) {
           </div>
         )}
       </footer>
-      <PayTable />
+      <PayTable pays={state.holdem.blindPays} />
     </main>
   );
 }
@@ -230,11 +232,11 @@ function Btn({ icon, label, kind, ...p }) {
   return <button className={`act ${kind}`} {...p}><span>{icon}</span>{label}</button>;
 }
 
-function PayTable() {
+function PayTable({ pays }) {
   return (
     <aside className="paytable">
       <b>La Ciega paga</b>
-      {PAYS.map(([k, name]) => <div key={k}><span>{name}</span><span>{{ 9: '500 a 1', 8: '50 a 1', 7: '10 a 1', 6: '3 a 1', 5: '3 a 2', 4: '1 a 1' }[k]}</span></div>)}
+      {PAYS.map(([k, name]) => <div key={k}><span>{name}</span><span>{pays[k] ? ratio(pays[k]) : 'Empata'}</span></div>)}
       <small>Con menos de escalera, la Ciega empata.</small>
     </aside>
   );

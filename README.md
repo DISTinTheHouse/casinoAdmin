@@ -38,7 +38,7 @@ Reglas tipo *Ultimate Texas Hold'em*: el jugador juega solo contra el crupier, c
 3. El crupier califica con par o mejor. Si no califica, el Ante regresa.
 4. Si gana el jugador: Juego y Ante pagan 1 a 1; la Ciega paga solo con escalera o mejor (escalera 1:1, color 3:2, full 3:1, póker 10:1, escalera de color 50:1, escalera real 500:1). Empate: todo regresa.
 
-El Hold'em tiene su propio configurador en *Reglas → Texas Hold'em*: comisión sobre ganancias (40% por defecto), Ante mínimo y máximo ($10 a $500 por defecto) y su simulador. El 21 tiene el suyo en *Reglas → 21 Blackjack*, y la meta de retención y el PIN están en *Reglas → General*. Con eso, el simulador da ≈ 17–19% para un jugador experto y ≈ 26–28% para uno casual. *Resumen* muestra cada juego por separado y el total de la noche.
+Cada juego tiene su configurador en *Reglas* (*21 Blackjack* y *Texas Hold'em*; meta, PIN y respaldos en *General*). Los dos muestran arriba la retención esperada (simulador) contra la real de la noche y la meta, explican cada regla, piden confirmar los cambios con un antes → después y guardan un historial. En Hold'em se configuran la comisión (40% por defecto), el Ante mínimo y máximo ($10 a $500), si se permite el 3× antes del flop y la tabla de pagos de la Ciega. Con eso, el simulador da ≈ 17–19% para un jugador experto y ≈ 26–28% para uno casual. *Resumen* muestra cada juego por separado y el total de la noche.
 
 ## Cómo se llega a la meta
 
