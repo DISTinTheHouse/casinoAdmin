@@ -28,7 +28,7 @@ Tres piezas en la misma red wifi:
 
 **Lector NFC** — lector USB en modo teclado (escribe el número de la tarjeta y Enter). Usa el mismo modelo en caja y en las máquinas para que el número salga igual.
 
-## Cómo se llega al 15%
+## Cómo se llega a la meta
 
 No hay ajuste por jugador: todos juegan con las mismas reglas y un RNG criptográfico. La retención sale de las reglas que eliges en *Reglas*:
 
@@ -36,9 +36,10 @@ No hay ajuste por jugador: todos juegan con las mismas reglas y un RNG criptogr�
 |---|---|
 | Blackjack 3:2, crupier se planta en 17 suave | ≈ 0.6% (experto) · ≈ 6% (casual) |
 | Blackjack 6:5, crupier pide en 17 suave | ≈ 2% · ≈ 7.5% |
-| Lo anterior + 28% de comisión sobre ganancias *(por defecto)* | ≈ 15% · ≈ 19% |
+| 8 barajas, 6:5, crupier pide en 17 suave + 40% de comisión sobre ganancias *(recomendadas, por defecto)* | ≈ 20% · ≈ 24% |
+| Lo mismo con 50% de comisión | ≈ 25% · ≈ 29% |
 
-El botón **Simular** recalcula esto con tus reglas y te dice qué comisión necesitas para tu meta. *Resumen* muestra la retención real de la noche contra la meta. La comisión se le muestra al jugador en la mesa.
+El botón **Simular** recalcula esto con tus reglas y te dice qué comisión necesitas para tu meta. *Resumen* muestra la retención real de la noche contra la meta (20% por defecto). El botón **Usar reglas recomendadas** en *Reglas* las vuelve a cargar. La comisión se le muestra al jugador en la mesa.
 
 ## Mantener
 

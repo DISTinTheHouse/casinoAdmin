@@ -316,7 +316,11 @@ function Rules() {
         <Field label="Apuesta mínima $"><input type="number" min="1" value={form.minBet} onChange={f('minBet')} /></Field>
         <Field label="Apuesta máxima $"><input type="number" min="1" value={form.maxBet} onChange={f('maxBet')} /></Field>
         <Field label="Nuevo PIN admin"><input type="password" value={form.adminPin} onChange={f('adminPin')} placeholder="Dejar vacío para no cambiar" /></Field>
-        <div className="row"><button className="primary">Guardar</button>{msg && <span className="note">{msg}</span>}</div>
+        <div className="row">
+          <button className="primary">Guardar</button>
+          <button type="button" onClick={() => { setForm({ ...form, ...s.recommended.rules, targetPct: s.recommended.targetPct }); setMsg('Reglas recomendadas cargadas. Dale Guardar para aplicarlas.'); }}>Usar reglas recomendadas</button>
+          {msg && <span className="note">{msg}</span>}
+        </div>
       </form>
 
       <h3>Simulador</h3>

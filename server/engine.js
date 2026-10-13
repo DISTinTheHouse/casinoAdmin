@@ -41,7 +41,8 @@ export function total(cards) {
 const isBJ = (h) => h.cards.length === 2 && !h.split && total(h.cards).total === 21;
 
 // Reglas por defecto: las cambia el admin, son iguales para todas las máquinas y jugadores.
-export const DEFAULT_RULES = { decks: 6, bjPays: '6:5', dealerHitsSoft17: true, winCommissionPct: 28 };
+export const DEFAULT_RULES = { decks: 8, bjPays: '6:5', dealerHitsSoft17: true, winCommissionPct: 40 };
+export const DEFAULT_TARGET_PCT = 20;
 
 // El zapato se recalcula del seed; se guarda en caché para no rebarajar en cada carta.
 const cache = new Map();

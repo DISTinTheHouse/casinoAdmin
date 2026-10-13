@@ -2,13 +2,13 @@
 import { createServer } from 'node:http';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
-import { DEFAULT_RULES, startRound, act, view, sha256 } from './engine.js';
+import { DEFAULT_RULES, DEFAULT_TARGET_PCT, startRound, act, view, sha256 } from './engine.js';
 import { one, all, run, tx, log, verifyLog, now, getSetting, setSetting, currentNight, backup, BACKUP_DIR } from './db.js';
 
 const PORT = Number(process.env.BJ_PORT || 7021);
 const ADMIN_PIN = () => getSetting('adminPin', process.env.BJ_ADMIN_PIN || '2121');
 const rules = () => ({ ...DEFAULT_RULES, ...getSetting('rules', {}) });
-const target = () => getSetting('targetPct', 15);
+const target = () => getSetting('targetPct', DEFAULT_TARGET_PCT);
 const limits = () => getSetting('limits', { minBet: 1000, maxBet: 100000 }); // centavos
 
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -234,7 +234,8 @@ const adminRoutes = {
     log('libera', { machine: m.id, card: m.card_uid });
     return { ok: true };
   }),
-  'GET /api/a/settings': () => ({ rules: rules(), targetPct: target(), limits: limits() }),
+  'GET /api/a/settings': () => ({ rules: rules(), targetPct: target(), limits: limits(),
+    recommended: { rules: DEFAULT_RULES, targetPct: DEFAULT_TARGET_PCT } }),
   'POST /api/a/settings': (_, b) => {
     const r = rules();
     const next = {
