@@ -4,6 +4,7 @@ import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { DEFAULT_RULES, DEFAULT_TARGET_PCT, startRound, act, view, sha256 } from './engine.js';
 import * as holdem from './holdem.js';
+import * as updates from './updates.js';
 import { one, all, run, tx, log, verifyLog, now, getSetting, setSetting, currentNight, backup, checkpoint, db, BACKUP_DIR } from './db.js';
 
 const PORT = Number(process.env.BJ_PORT || 7021);
@@ -305,6 +306,18 @@ const adminRoutes = {
   },
   'GET /api/a/rules-history': () => all("SELECT id, at, data FROM log WHERE type = 'reglas' ORDER BY id DESC LIMIT 30")
     .map((e) => ({ id: e.id, at: e.at, ...JSON.parse(e.data) })),
+  // Actualizaciones: ver qué tiene la caja, revisar GitHub y bajar la versión nueva para las máquinas.
+  'GET /api/a/updates': () => ({ local: updates.local() }),
+  'POST /api/a/updates/check': async () => {
+    const l = await updates.latest(), have = updates.local();
+    return { version: l.version, notes: l.notes, pub_date: l.pub_date, apps: Object.keys(l.apps),
+      isNew: !have || updates.newer(l.version, have.version) };
+  },
+  'POST /api/a/updates/download': async () => {
+    const m = await updates.download();
+    log('actualizacion', { version: m.version, apps: Object.keys(m.apps) });
+    return { local: m };
+  },
   'GET /api/a/log': () => all('SELECT id, at, type, data, hash FROM log ORDER BY id DESC LIMIT 200'),
   'GET /api/a/verify': () => verifyLog(),
 };
@@ -351,6 +364,7 @@ createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) { raw += chunk; if (raw.length > 1e5) fail(413, 'Muy grande'); }
     const body = raw ? JSON.parse(raw) : {};
+    if (req.method === 'GET' && url.pathname.startsWith('/api/update/')) return updates.handle(req, res, url);
     if (key === 'GET /api/ping') return send(200, { ok: true, time: Date.now() });
     if (machineRoutes[key]) return send(200, await machineRoutes[key](machineOf(req, url, raw), body));
     if (adminRoutes[key]) {

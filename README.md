@@ -54,6 +54,16 @@ No hay ajuste por jugador: todos juegan con las mismas reglas y un RNG criptogr�
 
 El botón **Simular** recalcula esto con tus reglas y te dice qué comisión necesitas para tu meta. *Resumen* muestra la retención real de la noche contra la meta (20% por defecto). El botón **Usar reglas recomendadas** en *Reglas* las vuelve a cargar. La comisión se le muestra al jugador en la mesa.
 
+## Actualizaciones
+
+Las apps se actualizan solas desde la PC de caja; solo esa PC necesita internet.
+
+1. Publica la versión: *Actions → Instaladores Windows → Run workflow* con la versión nueva (ej. `v1.2.0`). Cada app sale con ese número y firmada.
+2. En el admin, *Actualizaciones → Buscar versión nueva → Bajar*. El servidor la guarda en `server/actualizaciones/`.
+3. Cada máquina, cuando nadie está jugando, muestra **Actualizar ahora**; el admin muestra un aviso arriba. Se instala y vuelve a abrir sola.
+
+Solo se instala lo que va firmado con la clave del proyecto. La clave privada vive en el secreto `TAURI_SIGNING_PRIVATE_KEY` del repo (*Settings → Secrets and variables → Actions*); sin él los instaladores salen sin firma y no se actualizan solos. La llave pública está en cada `src-tauri/tauri.conf.json`. Las apps instaladas antes de esta versión se instalan una última vez a mano. El servidor se sigue actualizando a mano con `servidor-21-blackjack.zip` (sin borrar `blackjack.db`).
+
 ## Mantener
 
 - `server/engine.js` reglas del 21 · `server/index.js` API · `server/db.js` base de datos y bitácora · `server/sim.js` simulador

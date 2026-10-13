@@ -108,3 +108,6 @@ button:disabled { opacity: .35; cursor: default; }
 @media (max-height: 640px) { :root { --cw: clamp(56px, 11vh, 90px); } .act { height: 84px; width: 150px; font-size: 19px; } .act span { font-size: 30px; } .top { padding-top: 10px; } }
 .left { display: flex; align-items: center; gap: 16px; }
 .sound { background: rgba(0,0,0,.2); width: 48px; height: 48px; border-radius: 50%; font-size: 22px; }
+.update { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; font-size: 18px;
+  background: rgba(0,0,0,.3); padding: 12px 18px; border-radius: 16px; }
+.update small { flex-basis: 100%; color: var(--lose); }

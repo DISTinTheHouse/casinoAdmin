@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getSession, setSession, lastServer, money, pct, time } from './api.js';
+import useUpdate from './update.js';
 
 const GAME = { 21: '21', holdem: "Hold'em" };
-const TABS = ['Resumen', 'Caja', 'Máquinas', 'Reglas', 'Bitácora'];
+const TABS = ['Resumen', 'Caja', 'Máquinas', 'Reglas', 'Bitácora', 'Actualizaciones'];
 
 export default function App() {
   const [session, setS] = useState(getSession);
   const [tab, setTab] = useState('Resumen');
+  const update = useUpdate(session?.server, 'admin');
   if (!session) return <Login onLogin={(s) => { setSession(s); setS(s); }} />;
-  const Page = { Resumen, Caja, Máquinas: Machines, Reglas: Rules, Bitácora: Log }[tab];
+  const Page = { Resumen, Caja, Máquinas: Machines, Reglas: Rules, Bitácora: Log, Actualizaciones: Updates }[tab];
   return (
     <div className="shell">
       <nav className="nav">
@@ -16,6 +18,15 @@ export default function App() {
         <div className="tabs">{TABS.map((t) => <button key={t} className={t === tab ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}</div>
         <button className="link" onClick={() => { setSession(null); setS(null); }}>Salir</button>
       </nav>
+      {update.version && (
+        <div className="update-bar">
+          {update.state === 'installing' ? 'Actualizando el admin… se cierra y se vuelve a abrir solo.' : <>
+            Hay una versión nueva del admin ({update.version}).
+            <button className="primary" onClick={update.install}>Actualizar ahora</button>
+            {update.state && <span className="bad">{update.state}</span>}
+          </>}
+        </div>
+      )}
       <main className="page"><Page /></main>
     </div>
   );
@@ -524,6 +535,59 @@ function RulesGeneral({ s, load }) {
       <div className="panel row">
         <span className="dim" style={{ flex: 1 }}>El servidor guarda una copia de la base de datos cada día y al cerrar cada noche (se conservan 30).</span>
         <button onClick={async () => { try { const r = await api('backup', {}); setMsg(`Respaldo guardado en ${r.file}`); } catch (x) { setMsg(x.message); } }}>Respaldar ahora</button>
+      </div>
+    </>
+  );
+}
+
+const APP_NAMES = { game: 'Mesas de 21', holdem: "Mesas de Texas Hold'em", admin: 'Admin (esta PC)' };
+
+function Updates() {
+  const [data, load, err] = useApi('updates', 0);
+  const [gh, setGh] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState('');
+  const [mine, setMine] = useState(null);
+  useEffect(() => { window.__TAURI__?.app?.getVersion().then(setMine, () => {}); }, []);
+  const run = async (what, fn) => { setBusy(what); setMsg(''); try { await fn(); } catch (x) { setMsg(x.message); } setBusy(''); };
+  const check = () => run('check', async () => setGh(await api('updates/check', {})));
+  const download = () => run('download', async () => { await api('updates/download', {}); await load(); setGh({ ...gh, isNew: false });
+    setMsg(`Listo. Las máquinas verán la versión ${gh.version} en cuanto estén libres.`); });
+  if (!data) return <Empty err={err} />;
+  const l = data.local;
+  return (
+    <>
+      <Head title="Actualizaciones" sub="La caja baja la versión nueva de GitHub y las máquinas se actualizan desde aquí por el wifi">
+        <button onClick={check} disabled={!!busy}>{busy === 'check' ? 'Buscando…' : 'Buscar versión nueva'}</button>
+      </Head>
+      <div className="grid kpis three">
+        <Kpi label="Versión lista para las máquinas" value={l ? l.version : '—'} />
+        <Kpi label="Bajada" value={l ? time(l.downloaded_at) : 'Aún no se baja ninguna'} />
+        <Kpi label="Este admin" value={mine || '—'} />
+      </div>
+      {gh && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="row">
+            <div style={{ flex: 1 }}>
+              <b>Última versión en GitHub: {gh.version}</b>
+              <p className="dim" style={{ margin: '4px 0 0' }}>Publicada {time(gh.pub_date)} · {gh.apps.length ? gh.apps.map((a) => APP_NAMES[a]).join(', ') : 'sin instaladores firmados'}</p>
+            </div>
+            {gh.isNew ? <button className="primary" onClick={download} disabled={!!busy || !gh.apps.length}>{busy === 'download' ? 'Bajando…' : `Bajar ${gh.version} para las máquinas`}</button>
+              : <span className="note good">Ya la tienes</span>}
+          </div>
+        </div>
+      )}
+      {msg && <p className="note">{msg}</p>}
+      {l && <>
+        <h3>Qué incluye la versión {l.version}</h3>
+        <Table cols={['App', 'Instalador']} rows={Object.entries(l.apps).map(([a, x]) => [APP_NAMES[a] || a, <code className="dim">{x.file}</code>])} />
+      </>}
+      <h3>Cómo funciona</h3>
+      <div className="panel dim">
+        <p style={{ marginTop: 0 }}>1. Publica la versión en GitHub (<i>Actions → Instaladores Windows → Run workflow</i> con la versión nueva).</p>
+        <p>2. Aquí, <b>Buscar versión nueva</b> y luego <b>Bajar</b>. Solo la PC de caja necesita internet.</p>
+        <p>3. Cada máquina, cuando no tiene a nadie jugando, muestra <b>Actualizar ahora</b>. Se instala sola y vuelve a abrir. Solo instala lo que va firmado con la clave del proyecto.</p>
+        <p style={{ marginBottom: 0 }}>El servidor no se actualiza solo: si una versión trae cambios del servidor, cópialo desde <code>servidor-21-blackjack.zip</code> (sin borrar <code>blackjack.db</code>).</p>
       </div>
     </>
   );
