@@ -1,0 +1,131 @@
+:root {
+  --felt: #0d6b44; --felt-dark: #053a24; --gold: #f6c453; --ink: #fff; --muted: rgba(255,255,255,.65);
+  --win: #3ddc84; --lose: #ff6b6b; --card: #fffdf7;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--ink); user-select: none; -webkit-tap-highlight-color: transparent;
+}
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; background: var(--felt-dark); overflow: hidden; }
+button { font: inherit; cursor: pointer; border: 0; color: inherit; }
+button:disabled { opacity: .35; cursor: default; }
+
+.felt { height: 100%; display: flex; flex-direction: column;
+  background: radial-gradient(ellipse at 50% 30%, #13875a 0%, var(--felt) 45%, var(--felt-dark) 100%); }
+.center { flex: 1; display: grid; place-content: center; justify-items: center; text-align: center; gap: 8px; }
+.muted { color: var(--muted); }
+
+.top { display: flex; justify-content: space-between; align-items: flex-start; padding: 18px 32px 0; }
+.logo { font-weight: 900; font-size: 34px; color: var(--gold); letter-spacing: -1px; display: flex; align-items: baseline; gap: 10px; }
+.logo span { font-size: 15px; letter-spacing: 6px; color: var(--ink); font-weight: 700; }
+.logo.big { font-size: 64px; justify-content: center; }
+.who { text-align: right; }
+.who .name { font-size: 18px; color: var(--muted); }
+.who .balance { font-size: 44px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* Pantalla de espera */
+.idle h1 { font-size: clamp(36px, 6vw, 64px); margin: 24px 0 0; }
+.idle p { font-size: 22px; margin: 0 0 24px; }
+.nfc { width: 220px; height: 220px; border-radius: 50%; display: grid; place-items: center; position: relative; }
+.nfc::before, .nfc::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 3px solid var(--gold); animation: pulse 2.4s ease-out infinite; }
+.nfc::after { animation-delay: 1.2s; }
+.card-icon { width: 120px; height: 80px; border-radius: 14px; background: linear-gradient(135deg, var(--gold), #e09a1a);
+  color: #4a2b00; font-weight: 900; font-size: 36px; display: grid; place-items: center; box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  animation: float 3s ease-in-out infinite; }
+@keyframes pulse { from { transform: scale(.55); opacity: 1; } to { transform: scale(1.2); opacity: 0; } }
+@keyframes float { 50% { transform: translateY(-10px) rotate(-4deg); } }
+
+/* Mesa */
+.table { flex: 1; display: grid; grid-template-rows: minmax(0,1fr) auto minmax(0,1fr) auto; padding: 0 32px; min-height: 0; }
+.seat { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.seat.player { flex-direction: row; gap: 48px; align-items: flex-start; }
+.hand-box { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 10px; border-radius: 20px; border: 3px solid transparent; }
+.hand-box.active { border-color: var(--gold); background: rgba(0,0,0,.12); }
+.hand { display: flex; min-height: var(--ch); }
+.hand > * + * { margin-left: calc(var(--cw) * -0.45); }
+:root { --cw: clamp(64px, min(9vw, 12.5vh), 130px); --ch: calc(var(--cw) * 1.4); }
+
+.card { width: var(--cw); height: var(--ch); border-radius: 12px; background: var(--card); color: #1b1b1b; position: relative;
+  box-shadow: 0 8px 20px rgba(0,0,0,.35); animation: deal .45s cubic-bezier(.2,.8,.2,1) both; }
+.card.red { color: #d42a2a; }
+.card .corner { position: absolute; top: 8px; left: 10px; font-weight: 800; font-size: calc(var(--cw) * .2); line-height: 1; text-align: center; }
+.card .corner.br { top: auto; left: auto; bottom: 8px; right: 10px; transform: rotate(180deg); }
+.card .pip { position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--cw) * .5); }
+.card.back { background: repeating-linear-gradient(45deg, #b3261e 0 8px, #8f1d17 8px 16px); border: 6px solid var(--card); }
+.card.slot { background: none; box-shadow: none; border: 3px dashed rgba(255,255,255,.18); animation: none; }
+@keyframes deal { from { transform: translate(30vw, -40vh) rotate(25deg); opacity: 0; } }
+
+.label { display: flex; align-items: center; gap: 10px; font-size: 20px; color: var(--muted); }
+.label b { background: rgba(0,0,0,.35); color: var(--ink); padding: 4px 14px; border-radius: 99px; font-size: 24px; }
+.label b.bust { background: var(--lose); }
+.label b.twentyone { background: var(--gold); color: #3b2500; }
+.label em { font-style: normal; color: var(--gold); font-weight: 700; }
+
+.banner-slot { height: 84px; display: grid; place-items: center; }
+.banner { font-size: 40px; font-weight: 900; padding: 8px 36px; border-radius: 99px; animation: pop .4s cubic-bezier(.2,1.6,.4,1) both .3s; }
+.banner.win { background: var(--gold); color: #3b2500; box-shadow: 0 0 60px rgba(246,196,83,.6); }
+.banner.lose { background: rgba(0,0,0,.4); }
+.banner.push { background: rgba(255,255,255,.2); }
+@keyframes pop { from { transform: scale(.4); opacity: 0; } }
+
+/* Controles */
+.controls { padding: 16px 0 12px; display: flex; justify-content: center; }
+.actions { display: flex; gap: 18px; }
+.act { width: 170px; height: 120px; border-radius: 24px; font-size: 22px; font-weight: 800; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px; box-shadow: 0 6px 0 rgba(0,0,0,.3); transition: transform .08s; }
+.act span { font-size: 38px; line-height: 1; }
+.act:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.3); }
+.act.hit { background: #2f9e5b; } .act.stand { background: #d9534f; }
+.act.double { background: var(--gold); color: #3b2500; } .act.split { background: #3b82f6; }
+
+.betting { display: flex; align-items: center; gap: 40px; }
+.chips { display: flex; gap: 18px; }
+.chip { width: 96px; height: 96px; border-radius: 50%; font-weight: 900; font-size: 20px;
+  border: 7px dashed rgba(255,255,255,.85); box-shadow: 0 6px 0 rgba(0,0,0,.35), inset 0 0 0 4px rgba(0,0,0,.15); transition: transform .1s; }
+.chip:active:not(:disabled) { transform: translateY(4px) scale(.96); }
+.chip.c1000 { background: #e5e7eb; color: #222; border-color: #9ca3af; } .chip.c5000 { background: #dc2626; }
+.chip.c10000 { background: #2563eb; } .chip.c50000 { background: #111; border-color: var(--gold); color: var(--gold); }
+.bet { min-width: 180px; text-align: center; font-size: 40px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.bet small { display: block; font-size: 15px; color: var(--muted); font-weight: 600; }
+.deal { background: var(--gold); color: #3b2500; font-weight: 900; font-size: 28px; padding: 22px 48px; border-radius: 99px; box-shadow: 0 6px 0 #a87916; }
+.deal:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #a87916; }
+.ghost { background: rgba(255,255,255,.12); padding: 14px 26px; border-radius: 99px; font-size: 18px; font-weight: 700; }
+.exit { background: rgba(0,0,0,.25); color: var(--ink); font-size: 16px; font-weight: 600; padding: 8px 16px; border-radius: 99px; margin-top: 8px; }
+.clear { display: block; margin: 4px auto 0; background: none; color: var(--muted); font-size: 15px; text-decoration: underline; }
+
+.rules { text-align: center; font-size: 14px; color: var(--muted); padding: 0 0 14px; }
+.toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); background: #1c1c1c; padding: 16px 28px;
+  border-radius: 16px; font-size: 20px; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+
+.setup { margin: auto; width: min(520px, 90vw); display: grid; gap: 18px; }
+.setup label { display: grid; gap: 6px; font-weight: 600; color: var(--muted); }
+.setup input { font: inherit; font-size: 20px; padding: 14px 16px; border-radius: 14px; border: 0; background: rgba(0,0,0,.3); color: var(--ink); }
+.err { color: var(--lose); text-align: center; }
+
+@media (max-height: 800px) { .act { height: 96px; } .chip { width: 84px; height: 84px; font-size: 18px; } .banner-slot { height: 60px; } .banner { font-size: 32px; } .who .balance { font-size: 36px; } }
+@media (max-width: 1100px) { .betting { flex-direction: column; gap: 12px; } }
+.offline { position: fixed; top: 0; left: 0; right: 0; background: #b45309; text-align: center; padding: 10px; font-size: 18px; font-weight: 700; }
+.empty { text-align: center; max-width: 720px; font-size: 26px; font-weight: 700; background: rgba(0,0,0,.3); padding: 24px 40px; border-radius: 20px; }
+@media (max-height: 640px) { :root { --cw: clamp(56px, 11vh, 90px); } .act { height: 84px; width: 150px; font-size: 19px; } .act span { font-size: 30px; } .top { padding-top: 10px; } }
+.left { display: flex; align-items: center; gap: 16px; }
+.sound { background: rgba(0,0,0,.2); width: 48px; height: 48px; border-radius: 50%; font-size: 22px; }
+
+/* Texas Hold'em */
+.poker { --cw: clamp(56px, min(7vw, 10vh), 112px); --ch: calc(var(--cw) * 1.4); position: relative; }
+.board { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.poker .hand > * + * { margin-left: 12px; }
+.seat.player { align-items: center; }
+.spots { display: flex; gap: 14px; }
+.spot { width: 110px; height: 110px; border-radius: 50%; border: 3px dashed rgba(255,255,255,.3); display: grid; place-content: center;
+  text-align: center; font-weight: 800; font-size: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.spot small { font-size: 14px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.spot.on { border-style: solid; border-color: var(--ink); color: var(--ink); background: rgba(0,0,0,.2); }
+.spot.gold.on { border-color: var(--gold); color: var(--gold); }
+.hint { text-align: center; color: var(--muted); font-size: 18px; margin: 0 0 12px; }
+.paytable { position: absolute; right: 32px; top: 8px; width: 220px; background: rgba(0,0,0,.25); border-radius: 16px; padding: 14px 16px;
+  font-size: 14px; display: grid; gap: 4px; }
+.paytable b { color: var(--gold); font-size: 15px; margin-bottom: 4px; }
+.paytable div { display: flex; justify-content: space-between; }
+.paytable small { color: var(--muted); margin-top: 4px; }
+.label em { font-size: 16px; }
+@media (max-width: 1100px) { .paytable { display: none; } }
+@media (max-height: 800px) { .spot { width: 90px; height: 90px; font-size: 17px; } }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Texas Holdem",
+  "version": "1.0.1",
+  "identifier": "mx.blackjack21.holdem",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5175",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [{ "title": "Texas Hold'em", "fullscreen": true, "width": 1366, "height": 768 }],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "windows": { "webviewInstallMode": { "type": "embedBootstrapper" } }
+  }
+}

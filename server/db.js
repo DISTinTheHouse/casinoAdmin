@@ -28,7 +28,8 @@ CREATE INDEX IF NOT EXISTS cash_night ON cash(night_id);
 `);
 
 // Columnas agregadas después de la primera versión (bases ya creadas).
-for (const sql of ['ALTER TABLE cash ADD COLUMN shift_id INTEGER', 'ALTER TABLE cash ADD COLUMN ref INTEGER']) {
+for (const sql of ['ALTER TABLE cash ADD COLUMN shift_id INTEGER', 'ALTER TABLE cash ADD COLUMN ref INTEGER',
+  "ALTER TABLE rounds ADD COLUMN game TEXT NOT NULL DEFAULT '21'"]) {
   try { db.exec(sql); } catch { /* ya existe */ }
 }
 db.exec('CREATE INDEX IF NOT EXISTS cash_card ON cash(card_uid); CREATE INDEX IF NOT EXISTS cash_shift ON cash(shift_id)');

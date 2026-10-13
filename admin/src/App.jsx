@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getSession, setSession, lastServer, money, pct, time } from './api.js';
 
+const GAME = { 21: '21', holdem: "Hold'em" };
 const TABS = ['Resumen', 'Caja', 'Máquinas', 'Reglas', 'Bitácora'];
 
 export default function App() {
@@ -85,9 +86,15 @@ function Resumen() {
         <Kpi label="Manos jugadas" value={s.hands.toLocaleString('es-MX')} />
         <Kpi label="Máquinas en línea" value={`${s.machines.filter((m) => m.online).length} / ${s.machines.length}`} />
       </div>
+      {s.byGame.length > 0 && <>
+        <h3>Por juego</h3>
+        <Table cols={['Juego', 'Manos', 'Apostado', 'Ganancia casa', 'Retención']} rows={s.byGame.map((g) => [
+          GAME[g.game] || g.game, g.hands.toLocaleString('es-MX'), money(g.bet), money(g.house), pct(g.retentionPct),
+        ])} />
+      </>}
       <h3>Máquinas</h3>
-      <Table cols={['Máquina', 'Estado', 'Jugador', 'Saldo', 'Manos', 'Ganancia casa', '']} rows={s.machines.map((m) => [
-        m.name, <Dot on={m.online} />, m.card_uid ? (m.card_name || m.card_uid) : <span className="dim">Libre</span>,
+      <Table cols={['Máquina', 'Juego', 'Estado', 'Jugador', 'Saldo', 'Manos', 'Ganancia casa', '']} rows={s.machines.map((m) => [
+        m.name, m.game ? GAME[m.game] : <span className="dim">—</span>, <Dot on={m.online} />, m.card_uid ? (m.card_name || m.card_uid) : <span className="dim">Libre</span>,
         m.card_uid ? money(m.balance) : '—', m.hands, money(m.house),
         m.card_uid && !m.online ? <button className="link" onClick={() => release(m)}>Liberar</button> : '',
       ])} empty="Agrega máquinas en la pestaña Máquinas" />
@@ -201,7 +208,7 @@ function History({ h, onUndo }) {
   return (
     <>
     <Table cols={['Hora', 'Movimiento', 'Detalle', 'Monto', '']} rows={h.moves.slice(0, all ? 40 : 10).map((m) => m.kind === 'mano' ? [
-      time(m.at), <span className="tag">Mano</span>, `${m.machine || 'Máquina'} · apostó ${money(m.bet)}`,
+      time(m.at), <span className="tag">Mano</span>, `${GAME[m.game] || ''} · ${m.machine || 'Máquina'} · apostó ${money(m.bet)}`,
       <span className={m.payout - m.bet > 0 ? 'good' : m.payout - m.bet < 0 ? 'bad' : ''}>{m.payout - m.bet > 0 ? '+' : m.payout - m.bet < 0 ? '−' : ''}{money(Math.abs(m.payout - m.bet))}</span>, '',
     ] : [
       time(m.at), <span className="tag">{KIND[m.kind]}</span>, m.corrected ? <span className="dim">Corregida</span> : '',
@@ -289,19 +296,19 @@ function Rules() {
   const [sim, setSim] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  useEffect(() => { if (s) setForm({ ...s.rules, targetPct: s.targetPct, minBet: s.limits.minBet / 100, maxBet: s.limits.maxBet / 100, adminPin: '' }); }, [s]);
+  useEffect(() => { if (s) setForm({ ...s.rules, holdemCommission: s.holdem.winCommissionPct, targetPct: s.targetPct, minBet: s.limits.minBet / 100, maxBet: s.limits.maxBet / 100, adminPin: '' }); }, [s]);
   if (!form) return <Empty err={err} />;
   const f = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   const save = async (e) => {
     e.preventDefault();
     try {
       await api('settings', { rules: { decks: +form.decks, bjPays: form.bjPays, dealerHitsSoft17: form.dealerHitsSoft17 === true || form.dealerHitsSoft17 === 'true', winCommissionPct: +form.winCommissionPct },
-        targetPct: +form.targetPct, limits: { minBet: +form.minBet, maxBet: +form.maxBet }, adminPin: form.adminPin || undefined });
+        holdem: { winCommissionPct: +form.holdemCommission }, targetPct: +form.targetPct, limits: { minBet: +form.minBet, maxBet: +form.maxBet }, adminPin: form.adminPin || undefined });
       if (form.adminPin) setSession({ ...getSession(), pin: form.adminPin });
       setSim(null); setMsg('Guardado. Las máquinas usan las reglas nuevas desde la siguiente mano.'); load();
     } catch (x) { setMsg(x.message); }
   };
-  const simulate = async () => { setBusy(true); try { setSim(await api('simulate', {})); } catch (x) { setMsg(x.message); } setBusy(false); };
+  const simulate = async (game) => { setBusy(game); try { setSim({ game, ...(await api('simulate', { game })) }); } catch (x) { setMsg(x.message); } setBusy(false); };
 
   return (
     <>
@@ -311,14 +318,15 @@ function Rules() {
         <Field label="Blackjack paga"><select value={form.bjPays} onChange={f('bjPays')}>{['3:2', '6:5', '1:1'].map((d) => <option key={d}>{d}</option>)}</select></Field>
         <Field label="Crupier con 17 suave"><select value={String(form.dealerHitsSoft17)} onChange={f('dealerHitsSoft17')}>
           <option value="true">Pide carta</option><option value="false">Se planta</option></select></Field>
-        <Field label="Comisión sobre ganancias %"><input type="number" min="0" max="50" step="0.5" value={form.winCommissionPct} onChange={f('winCommissionPct')} /></Field>
+        <Field label="Comisión sobre ganancias en 21 %"><input type="number" min="0" max="50" step="0.5" value={form.winCommissionPct} onChange={f('winCommissionPct')} /></Field>
+        <Field label="Comisión sobre ganancias en Hold'em %"><input type="number" min="0" max="50" step="0.5" value={form.holdemCommission} onChange={f('holdemCommission')} /></Field>
         <Field label="Meta de retención %"><input type="number" min="0" max="50" value={form.targetPct} onChange={f('targetPct')} /></Field>
         <Field label="Apuesta mínima $"><input type="number" min="1" value={form.minBet} onChange={f('minBet')} /></Field>
         <Field label="Apuesta máxima $"><input type="number" min="1" value={form.maxBet} onChange={f('maxBet')} /></Field>
         <Field label="Nuevo PIN admin"><input type="password" value={form.adminPin} onChange={f('adminPin')} placeholder="Dejar vacío para no cambiar" /></Field>
         <div className="row">
           <button className="primary">Guardar</button>
-          <button type="button" onClick={() => { setForm({ ...form, ...s.recommended.rules, targetPct: s.recommended.targetPct }); setMsg('Reglas recomendadas cargadas. Dale Guardar para aplicarlas.'); }}>Usar reglas recomendadas</button>
+          <button type="button" onClick={() => { setForm({ ...form, ...s.recommended.rules, holdemCommission: s.recommended.holdem.winCommissionPct, targetPct: s.recommended.targetPct }); setMsg('Reglas recomendadas cargadas. Dale Guardar para aplicarlas.'); }}>Usar reglas recomendadas</button>
           {msg && <span className="note">{msg}</span>}
         </div>
       </form>
@@ -326,10 +334,13 @@ function Rules() {
       <h3>Simulador</h3>
       <div className="panel">
         <p className="dim">Juega 100,000 manos con las reglas guardadas y calcula cuánto retiene la casa de lo apostado.</p>
-        <button onClick={simulate} disabled={busy}>{busy ? 'Simulando…' : 'Simular'}</button>
-        {sim && <Table cols={['Tipo de jugador', 'Ventaja por reglas', 'Retención esperada', `Comisión para llegar a ${pct(s.targetPct)}`]} rows={[
-          ['Experto (estrategia básica)', pct(sim.basica.ventajaReglasPct), pct(sim.basica.retencionPct), `≈ ${sim.basica.comisionParaMeta}%`],
-          ['Casual (pide hasta 17)', pct(sim.casual.ventajaReglasPct), pct(sim.casual.retencionPct), `≈ ${sim.casual.comisionParaMeta}%`],
+        <div className="row">
+          <button onClick={() => simulate('21')} disabled={!!busy}>{busy === '21' ? 'Simulando…' : 'Simular 21'}</button>
+          <button onClick={() => simulate('holdem')} disabled={!!busy}>{busy === 'holdem' ? 'Simulando…' : "Simular Hold'em"}</button>
+        </div>
+        {sim && <Table cols={[`${GAME[sim.game]} · tipo de jugador`, 'Ventaja por reglas', 'Retención esperada', `Comisión para llegar a ${pct(s.targetPct)}`]} rows={[
+          [sim.game === 'holdem' ? 'Experto (apuesta con buenas manos)' : 'Experto (estrategia básica)', pct(sim.basica.ventajaReglasPct), pct(sim.basica.retencionPct), `≈ ${sim.basica.comisionParaMeta}%`],
+          [sim.game === 'holdem' ? 'Casual (solo apuesta al final con par)' : 'Casual (pide hasta 17)', pct(sim.casual.ventajaReglasPct), pct(sim.casual.retencionPct), `≈ ${sim.casual.comisionParaMeta}%`],
         ]} />}
       </div>
 
@@ -360,7 +371,7 @@ function Log() {
 }
 
 function Detail({ type, d }) {
-  if (type === 'mano') return `Máq ${d.machine} · ${d.card} · apostó ${money(d.bet)} · recibió ${money(d.payout)}`;
+  if (type === 'mano') return `${d.game === 'holdem' ? "Hold'em · " : ''}Máq ${d.machine} · ${d.card} · apostó ${money(d.bet)} · recibió ${money(d.payout)}`;
   if (type === 'recarga' || type === 'cobro' || type === 'correccion') return `${d.uid} · ${money(d.amount)}`;
   if (type === 'turno-abre' || type === 'turno-cierra') return `Turno #${d.id} · ${d.cashier}${d.efectivo != null ? ` · efectivo ${money(d.efectivo)}` : ''}`;
   if (type === 'reparte') return `Máq ${d.machine} · ${d.card} · ${money(d.bet)}`;

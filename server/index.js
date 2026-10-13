@@ -3,11 +3,13 @@ import { createServer } from 'node:http';
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { DEFAULT_RULES, DEFAULT_TARGET_PCT, startRound, act, view, sha256 } from './engine.js';
+import * as holdem from './holdem.js';
 import { one, all, run, tx, log, verifyLog, now, getSetting, setSetting, currentNight, backup, BACKUP_DIR } from './db.js';
 
 const PORT = Number(process.env.BJ_PORT || 7021);
 const ADMIN_PIN = () => getSetting('adminPin', process.env.BJ_ADMIN_PIN || '2121');
 const rules = () => ({ ...DEFAULT_RULES, ...getSetting('rules', {}) });
+const holdemRules = () => ({ ...holdem.DEFAULT_HOLDEM, ...getSetting('holdemRules', {}) });
 const target = () => getSetting('targetPct', DEFAULT_TARGET_PCT);
 const limits = () => getSetting('limits', { minBet: 1000, maxBet: 100000 }); // centavos
 
@@ -26,19 +28,39 @@ function machineOf(req, url, raw) {
 const openRound = (m) => one("SELECT * FROM rounds WHERE machine_id = ? AND ended_at IS NULL", m.id);
 const cardOf = (m) => m.card_uid && one('SELECT uid, name, balance FROM cards WHERE uid = ?', m.card_uid);
 
+const isHoldem = (st) => st.game === 'holdem';
+const viewOf = (st) => (isHoldem(st) ? holdem.view(st) : view(st));
+
 function machineState(m) {
   const r = openRound(m);
-  return { machine: m.name, card: cardOf(m) || null, round: r ? view(JSON.parse(r.state)) : null,
-    rules: rules(), limits: limits() };
+  return { machine: m.name, card: cardOf(m) || null, round: r ? viewOf(JSON.parse(r.state)) : null,
+    rules: rules(), holdem: { ...holdemRules(), blindPays: holdem.BLIND_PAYS }, limits: limits() };
 }
 
 function finishRound(roundId, st, m) {
-  const payout = st.hands.reduce((s, h) => s + h.payout, 0);
-  const bet = st.hands.reduce((s, h) => s + h.bet, 0);
+  const { bet, payout } = isHoldem(st) ? holdem.totals(st)
+    : { bet: st.hands.reduce((s, h) => s + h.bet, 0), payout: st.hands.reduce((s, h) => s + h.payout, 0) };
   run('UPDATE rounds SET state = ?, payout = ?, bet = ?, ended_at = ? WHERE id = ?', JSON.stringify(st), payout, bet, now(), roundId);
   run('UPDATE cards SET balance = balance + ? WHERE uid = ?', payout, m.card_uid);
-  log('mano', { round: roundId, machine: m.id, card: m.card_uid, bet, payout, seed: st.seed,
-    dealer: st.dealer, hands: st.hands.map((h) => h.cards) });
+  log('mano', { round: roundId, machine: m.id, card: m.card_uid, bet, payout, seed: st.seed, ...(isHoldem(st)
+    ? { game: 'holdem', dealer: st.dealer, player: st.player, board: st.board, folded: !!st.folded }
+    : { dealer: st.dealer, hands: st.hands.map((h) => h.cards) }) });
+}
+
+// Juega una jugada en la mano abierta con el motor que le toca; cobra del saldo lo que la jugada sume.
+function playAction(m, game, action) {
+  const r = openRound(m);
+  if (!r) fail(409, 'No hay mano en juego');
+  const prev = JSON.parse(r.state);
+  if ((game === 'holdem') !== isHoldem(prev)) fail(409, 'Esa mano es de otro juego');
+  const { st, extraBet } = (game === 'holdem' ? holdem.act : act)(prev, action);
+  if (extraBet) {
+    if (cardOf(m).balance < extraBet) fail(402, 'Saldo insuficiente');
+    run('UPDATE cards SET balance = balance - ? WHERE uid = ?', extraBet, m.card_uid);
+  }
+  if (st.phase === 'done') finishRound(r.id, st, m);
+  else run('UPDATE rounds SET state = ? WHERE id = ?', JSON.stringify(st), r.id);
+  return { ...machineState(m), round: viewOf(st) };
 }
 
 const machineRoutes = {
@@ -77,18 +99,24 @@ const machineRoutes = {
     if (st.phase === 'done') finishRound(id, st, m);
     return { ...machineState(m), round: view(st) };
   }),
-  'POST /api/m/action': (m, { action }) => tx(() => {
-    const r = openRound(m);
-    if (!r) fail(409, 'No hay mano en juego');
-    const { st, extraBet } = act(JSON.parse(r.state), action);
-    if (extraBet) {
-      if (cardOf(m).balance < extraBet) fail(402, 'Saldo insuficiente');
-      run('UPDATE cards SET balance = balance - ? WHERE uid = ?', extraBet, m.card_uid);
-    }
-    if (st.phase === 'done') finishRound(r.id, st, m);
-    else run('UPDATE rounds SET state = ? WHERE id = ?', JSON.stringify(st), r.id);
-    return { ...machineState(m), round: view(st) };
+  'POST /api/m/action': (m, { action }) => tx(() => playAction(m, '21', action)),
+  // Texas Hold'em: la apuesta inicial es el Ante; la Ciega (igual) se cobra junto con él.
+  // Se pide saldo para Ante + Ciega + 1x, así el jugador siempre puede llegar al final de la mano.
+  'POST /api/m/holdem/deal': (m, { ante }) => tx(() => {
+    const c = cardOf(m), amount = Math.round(Number(ante));
+    if (!c) fail(409, 'Acerca tu tarjeta');
+    if (openRound(m)) fail(409, 'Ya hay una mano en juego');
+    const { minBet, maxBet } = limits();
+    if (!(amount >= minBet && amount <= maxBet)) fail(400, 'Apuesta fuera de límites');
+    if (c.balance < amount * 3) fail(402, 'Saldo insuficiente: necesitas 3 veces el Ante');
+    run('UPDATE cards SET balance = balance - ? WHERE uid = ?', amount * 2, c.uid);
+    const st = holdem.startRound(holdemRules(), amount);
+    const id = run("INSERT INTO rounds (night_id, machine_id, card_uid, bet, state, started_at, game) VALUES (?, ?, ?, ?, ?, ?, 'holdem')",
+      currentNight().id, m.id, c.uid, amount * 2, JSON.stringify(st), now()).lastInsertRowid;
+    log('reparte', { round: id, game: 'holdem', machine: m.id, card: c.uid, bet: amount * 2, seedHash: st.seedHash });
+    return { ...machineState(m), round: holdem.view(st) };
   }),
+  'POST /api/m/holdem/action': (m, { action }) => tx(() => playAction(m, 'holdem', action)),
 };
 
 // ---------- Admin / caja ----------
@@ -98,7 +126,10 @@ function nightSummary(nightId) {
   const c = one(`SELECT COALESCE(SUM(CASE kind WHEN 'recarga' THEN amount WHEN 'correccion' THEN -amount END),0) recharged,
     COALESCE(SUM(CASE WHEN kind='cobro' THEN amount END),0) cashedOut FROM cash WHERE night_id = ?`, nightId);
   const house = g.bet - g.paid;
-  return { night: n, hands: g.hands, bet: g.bet, paid: g.paid, house, retentionPct: g.bet ? (house / g.bet) * 100 : 0, ...c };
+  const byGame = all(`SELECT game, COUNT(*) hands, SUM(bet) bet, SUM(bet - payout) house FROM rounds
+    WHERE night_id = ? AND ended_at IS NOT NULL GROUP BY game ORDER BY game`, nightId)
+    .map((x) => ({ ...x, retentionPct: x.bet ? (x.house / x.bet) * 100 : 0 }));
+  return { night: n, hands: g.hands, bet: g.bet, paid: g.paid, house, retentionPct: g.bet ? (house / g.bet) * 100 : 0, byGame, ...c };
 }
 
 // ---------- Caja: turnos y movimientos ----------
@@ -122,13 +153,14 @@ function shiftReport(id) {
       WHERE x.shift_id = ? ORDER BY x.id`, id) };
 }
 
-let simCache = null;
+let simCache = {};
 const adminRoutes = {
   'GET /api/a/summary': () => {
     const night = currentNight();
     const machines = all(`SELECT m.id, m.name, m.card_uid, m.last_seen, c.name card_name, c.balance,
       (SELECT COUNT(*) FROM rounds r WHERE r.machine_id = m.id AND r.night_id = ?) hands,
-      (SELECT COALESCE(SUM(bet - payout),0) FROM rounds r WHERE r.machine_id = m.id AND r.night_id = ? AND ended_at IS NOT NULL) house
+      (SELECT COALESCE(SUM(bet - payout),0) FROM rounds r WHERE r.machine_id = m.id AND r.night_id = ? AND ended_at IS NOT NULL) house,
+      (SELECT game FROM rounds r WHERE r.machine_id = m.id ORDER BY r.id DESC LIMIT 1) game
       FROM machines m LEFT JOIN cards c ON c.uid = m.card_uid ORDER BY m.id`, night.id, night.id)
       .map((x) => ({ ...x, online: x.last_seen && Date.now() - Date.parse(x.last_seen) < 20000 }));
     return { ...nightSummary(night.id), targetPct: target(), machines };
@@ -188,7 +220,7 @@ const adminRoutes = {
     const cash = all(`SELECT x.id, x.at, x.kind, x.amount, x.shift_id,
       EXISTS (SELECT 1 FROM cash y WHERE y.kind = 'correccion' AND y.ref = x.id) corrected
       FROM cash x WHERE x.card_uid = ? ORDER BY x.id DESC LIMIT 30`, uid);
-    const hands = all(`SELECT r.id, r.ended_at at, 'mano' kind, r.bet, r.payout, m.name machine FROM rounds r
+    const hands = all(`SELECT r.id, r.ended_at at, 'mano' kind, r.bet, r.payout, r.game, m.name machine FROM rounds r
       LEFT JOIN machines m ON m.id = r.machine_id WHERE r.card_uid = ? AND r.ended_at IS NOT NULL ORDER BY r.id DESC LIMIT 30`, uid);
     return { shiftId: openShift()?.id || null, moves: [...cash, ...hands].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 40) };
   },
@@ -234,8 +266,8 @@ const adminRoutes = {
     log('libera', { machine: m.id, card: m.card_uid });
     return { ok: true };
   }),
-  'GET /api/a/settings': () => ({ rules: rules(), targetPct: target(), limits: limits(),
-    recommended: { rules: DEFAULT_RULES, targetPct: DEFAULT_TARGET_PCT } }),
+  'GET /api/a/settings': () => ({ rules: rules(), holdem: holdemRules(), targetPct: target(), limits: limits(),
+    recommended: { rules: DEFAULT_RULES, holdem: holdem.DEFAULT_HOLDEM, targetPct: DEFAULT_TARGET_PCT } }),
   'POST /api/a/settings': (_, b) => {
     const r = rules();
     const next = {
@@ -245,17 +277,22 @@ const adminRoutes = {
       winCommissionPct: Math.min(50, Math.max(0, Number(b.rules?.winCommissionPct ?? r.winCommissionPct))),
     };
     setSetting('rules', next);
+    if (b.holdem?.winCommissionPct != null) setSetting('holdemRules', { winCommissionPct: Math.min(50, Math.max(0, Number(b.holdem.winCommissionPct) || 0)) });
     if (b.targetPct != null) setSetting('targetPct', Math.min(50, Math.max(0, Number(b.targetPct))));
     if (b.limits) setSetting('limits', { minBet: pesos(b.limits.minBet), maxBet: pesos(b.limits.maxBet) });
     if (b.adminPin) setSetting('adminPin', String(b.adminPin));
-    log('reglas', { rules: next, targetPct: target(), limits: limits() });
-    simCache = null;
+    log('reglas', { rules: next, holdem: holdemRules(), targetPct: target(), limits: limits() });
+    simCache = {};
     return adminRoutes['GET /api/a/settings']();
   },
-  'POST /api/a/simulate': () => simCache || (simCache = new Promise((ok, ko) => {
-    const w = new Worker(new URL('./sim-worker.js', import.meta.url), { workerData: { rules: rules(), targetPct: target() } });
-    w.once('message', ok); w.once('error', ko);
-  }).catch((e) => { simCache = null; throw e; })),
+  'POST /api/a/simulate': (_, { game }) => {
+    const g = game === 'holdem' ? 'holdem' : '21';
+    return simCache[g] || (simCache[g] = new Promise((ok, ko) => {
+      const w = new Worker(new URL('./sim-worker.js', import.meta.url),
+        { workerData: { game: g, rules: g === 'holdem' ? holdemRules() : rules(), targetPct: target() } });
+      w.once('message', ok); w.once('error', ko);
+    }).catch((e) => { delete simCache[g]; throw e; }));
+  },
   'GET /api/a/log': () => all('SELECT id, at, type, data, hash FROM log ORDER BY id DESC LIMIT 200'),
   'GET /api/a/verify': () => verifyLog(),
 };
