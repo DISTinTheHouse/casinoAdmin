@@ -16,6 +16,7 @@ Tres piezas en la misma red wifi:
 2. Copia la carpeta `server` y abre `iniciar-servidor.bat`. Si Windows pregunta por el firewall, permite **Redes privadas**.
 3. Anota la IP de esa PC (`ipconfig` → IPv4, por ejemplo `192.168.1.10`) y dale IP fija en el router.
 4. Para que arranque solo: pon un acceso directo del `.bat` en `shell:startup`.
+5. Para actualizar el servidor: ciérralo, reemplaza la carpeta `server` y vuelve a poner tu `blackjack.db`. Si junto a él hay `blackjack.db-wal` y `blackjack.db-shm`, cópialos también: ahí pueden estar los últimos movimientos. Desde la versión 1.1.1 el servidor los junta en `blackjack.db` al cerrarse.
 
 **2. Instaladores `.exe`**
 - Fácil: sube esta carpeta a un repo de GitHub, ve a *Actions → Instaladores Windows → Run workflow* y descarga los `.exe`.
