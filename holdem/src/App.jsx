@@ -3,6 +3,8 @@ import { api, getConfig, setConfig, money } from './api.js';
 import useCardReader from './useCardReader.js';
 import { sfx, soundOn, setSound } from './sounds.js';
 import useUpdate from './update.js';
+import useStaged from './stage.js';
+import { NAMES, handName, winningCards } from './hands.js';
 
 const CHIPS = [1000, 5000, 10000, 50000]; // centavos: $10, $50, $100, $500
 const IDLE_MS = 120000;
@@ -43,14 +45,29 @@ export default function App() {
 
   const update = useUpdate(cfg?.server, 'holdem');
 
+  // La mano se muestra paso a paso (ver stage.js); los sonidos van al ritmo de lo que aparece.
+  const round = state?.round?.game === 'holdem' ? state.round : null;
+  const latest = useRef(round);
+  latest.current = round;
+  const stage = useStaged(round, !!state, (kind) => {
+    const r = latest.current;
+    if (kind !== 'result') return sfx.deal(1);
+    if (!r) return;
+    const bet = r.ante + r.blind + r.play;
+    if (r.payout > bet && r.payout - bet >= r.blind * 3) sfx.blackjack();
+    else if (r.payout > bet) sfx.win();
+    else if (r.payout === bet) sfx.push();
+    else sfx.lose();
+  });
+
   if (!cfg) return <Setup onSave={(c) => { setConfig(c); setCfg(c); }} />;
   const other = state?.round && state.round.game !== 'holdem';
   return (
     <div className="felt">
-      <Header state={state} onReset={() => { setConfig(null); setCfg(null); }} onExit={() => call('close')} />
+      <Header state={state} stage={stage} onReset={() => { setConfig(null); setCfg(null); }} onExit={() => call('close')} />
       {!state ? <div className="center muted">Conectando…</div>
         : other ? <div className="center"><div className="empty">Esta tarjeta tiene una mano de 21 sin terminar. Termínala en la mesa de 21.</div></div>
-        : state.card ? <Table state={state} call={call} />
+        : state.card ? <Table state={state} stage={stage} call={call} />
         : <Idle update={update} onDemo={import.meta.env.DEV ? (uid) => call('open', { uid }) : null} />}
       {state && <Rules h={state.holdem} />}
       {error && <div className="toast">{error}</div>}
@@ -59,10 +76,11 @@ export default function App() {
   );
 }
 
-function Header({ state, onReset, onExit }) {
+function Header({ state, stage, onReset, onExit }) {
   const taps = useRef(0);
   const [sound, setS] = useState(soundOn);
   const toggle = () => { setSound(!sound); setS(!sound); };
+  const exitable = !state?.round || (state.round.phase === 'done' && !stage.busy);
   const secret = () => { if (++taps.current >= 7 && confirm('¿Configurar esta máquina de nuevo?')) onReset(); };
   return (
     <header className="top">
@@ -73,8 +91,10 @@ function Header({ state, onReset, onExit }) {
       {state?.card && (
         <div className="who">
           <div className="name">{state.card.name || 'Jugador'}</div>
-          <div className="balance">{money(state.card.balance)}</div>
-          {!state.round || state.round.phase === 'done' ? <button className="exit" onClick={onExit}>Terminar y guardar saldo</button> : null}
+          {/* Lo ganado se suma al saldo hasta que aparece el resultado, no antes. */}
+          <div className="balance">{money(state.round?.phase === 'done' && !stage.result ? state.card.balance - state.round.payout : state.card.balance)}</div>
+          {/* El botón guarda su lugar aunque esté oculto, para que la mesa no brinque al aparecer. */}
+          <button className={'exit' + (exitable ? '' : ' away')} onClick={onExit} disabled={!exitable}>Terminar y guardar saldo</button>
         </div>
       )}
     </header>
@@ -99,12 +119,13 @@ function Idle({ onDemo, update }) {
   );
 }
 
-function Table({ state, call }) {
+function Table({ state, stage, call }) {
   const { card, round, holdem: limits } = state;
   const [ante, setAnte] = useState(() => Math.min(limits.minBet * 5, limits.maxBet));
   const [busy, setBusy] = useState(false);
   const lastTouch = useRef(Date.now());
   const playing = round?.phase === 'player';
+  const waiting = round && stage.busy;
 
   const go = async (path, body) => {
     if (busy) return;
@@ -121,45 +142,44 @@ function Table({ state, call }) {
     return () => clearInterval(t);
   }, [playing, call]);
 
-  // Sonidos: una carta nueva = un "swish"; al terminar la mano, el sonido del resultado.
-  const prev = useRef(null);
-  useEffect(() => {
-    const p = prev.current; prev.current = round;
-    if (!round) return;
-    const count = (r) => (r ? r.player.cards.length + r.board.length + r.dealer.cards.length : 0);
-    const fresh = !p || p.seedHash !== round.seedHash;
-    const added = count(round) - (fresh ? 0 : count(p));
-    if (added > 0) sfx.deal(Math.min(added, 4));
-    if (round.phase === 'done' && (fresh || p.phase !== 'done')) {
-      const bet = round.ante + round.blind + round.play;
-      setTimeout(() => (round.payout > bet && round.payout - bet >= round.blind * 3 ? sfx.blackjack()
-        : round.payout > bet ? sfx.win() : round.payout === bet ? sfx.push() : sfx.lose()), 450);
-    }
-  }, [round]);
-
   const add = (c) => { sfx.chip(); lastTouch.current = Date.now(); setAnte((b) => Math.min(b + c, limits.maxBet, Math.floor(card.balance / 3))); };
   const canDeal = ante >= limits.minBet && ante * 3 <= card.balance;
   const bet = (x) => go('holdem/action', { action: `bet${x}` });
   const can = (x) => !busy && card.balance >= round.ante * x;
   const shown = round || { ante, blind: ante, play: 0 };
 
+  // Solo las cartas que ya se repartieron en pantalla.
+  const mine = round?.player.cards.slice(0, stage.p) || [];
+  const board = round?.board.slice(0, stage.b) || [];
+  const dealer = round?.dealer.cards.slice(0, stage.flip) || [];
+  const myHand = mine.length === 2 ? (stage.result ? round.player.hand : handName([...mine, ...board])) : null;
+  // Al final se marcan las cartas que forman la mano ganadora y el resto se oscurece.
+  // Con carta alta no se marca nada: casi siempre la decide una carta que comparten los dos.
+  const winner = stage.result && round.result !== 'retira' ? (round.result === 'pierde' ? 'dealer' : 'player') : null;
+  const marks = winner && (winner === 'dealer' ? round.dealer.hand : round.player.hand) !== 'Carta alta' ? winningCards([...(winner === 'dealer' ? dealer : mine), ...board]) : null;
+  const hole = marks && marks.filter((i) => i < 2);
+  const onBoard = marks && marks.filter((i) => i >= 2).map((i) => i - 2);
+
   return (
     <main className="table poker">
       <section className="seat dealer">
-        <div className="label"><span>Crupier</span>{round?.dealer.hand && <b>{round.dealer.hand}</b>}
-          {round?.phase === 'done' && !round.dealer.qualifies && <em>No califica: tu Ante regresa</em>}</div>
-        <Hand cards={round?.dealer.cards} hidden={round ? round.dealer.hidden : false} empty={2} />
+        <div className={'label' + (winner === 'dealer' ? ' winner' : '')}><span>Crupier</span>{stage.dealerHand && <b className="pop">{round.dealer.hand}</b>}
+          {stage.dealerHand && round.result !== 'retira' && !round.dealer.qualifies && <em className="pop">No califica: tu Ante regresa</em>}</div>
+        <Hand cards={dealer} backs={round ? stage.d - dealer.length : 0} empty={2} win={winner === 'dealer' ? hole : null} />
       </section>
 
       <section className="board">
-        <Hand cards={round?.board} empty={5} spread />
-        <div className="banner-slot">{round?.phase === 'done' && <Result round={round} />}</div>
+        <Hand cards={board} empty={5} spread win={onBoard} />
+        <div className="banner-slot">
+          {stage.result ? <Result round={round} pays={limits.blindPays} />
+            : stage.caption && <div key={stage.caption} className="street">{stage.caption}</div>}
+        </div>
       </section>
 
       <section className="seat player">
         <div className="hand-box">
-          <Hand cards={round?.player.cards} empty={2} />
-          <div className="label"><span>Tú</span>{round?.player.hand && <b>{round.player.hand}</b>}</div>
+          <Hand cards={mine} empty={2} win={winner === 'player' ? hole : null} />
+          <div className={'label' + (winner === 'player' ? ' winner' : '')}><span>Tú</span>{myHand && <b key={myHand} className="pop">{myHand}</b>}</div>
         </div>
         <div className="spots">
           <Spot label="Ante" value={shown.ante} />
@@ -169,7 +189,9 @@ function Table({ state, call }) {
       </section>
 
       <footer className="controls">
-        {playing ? (
+        {waiting ? (
+          <p className="hint wait">{stage.result ? 'Mira el resultado' : 'Mira las cartas'}<i>.</i><i>.</i><i>.</i></p>
+        ) : playing ? (
           <div>
             <p className="hint">{round.street === 0 && !round.options.bet3 ? 'Antes del flop: apuesta 4× el Ante o pasa' : HINT[round.street]}</p>
             <div className="actions">
@@ -203,34 +225,44 @@ function Table({ state, call }) {
   );
 }
 
-function Result({ round }) {
+function Result({ round, pays }) {
   const bet = round.ante + round.blind + round.play;
+  const blind = round.result === 'gana' && pays[NAMES.indexOf(round.player.hand)];
   const [text, kind] = round.result === 'retira' ? ['Te retiraste', 'lose']
     : round.payout > bet ? [`¡Ganaste ${money(round.payout - bet)}!`, 'win']
     : round.payout === bet ? ['Empate', 'push']
     : round.payout > 0 ? [`Gana la casa · regresan ${money(round.payout)}`, 'lose'] : ['Gana la casa', 'lose'];
-  return <div className={`banner ${kind}`}>{text}</div>;
+  return (
+    <div className="result">
+      <div className={`banner ${kind}`}>{text}</div>
+      {round.result !== 'retira' && (
+        <div className="versus">Tú: <b>{round.player.hand}</b> · Crupier: <b>{round.dealer.hand}</b>
+          {blind ? <> · La Ciega paga <b>{ratio(blind)}</b></> : null}</div>
+      )}
+    </div>
+  );
 }
 
 const Spot = ({ label, value, gold }) => (
   <div className={'spot' + (value ? ' on' : '') + (gold ? ' gold' : '')}><small>{label}</small>{value ? money(value) : '—'}</div>
 );
 
-function Hand({ cards = [], hidden, empty, spread }) {
-  const slots = Math.max(0, (hidden ? 0 : empty) - cards.length);
+// `backs` = cartas boca abajo; al voltearse ocupan el mismo lugar y se animan como un giro.
+function Hand({ cards = [], backs = 0, empty, spread, win }) {
+  const slots = Math.max(0, empty - cards.length - backs);
   return (
     <div className={'hand' + (spread ? ' spread' : '')}>
-      {cards.map((c, i) => <Card key={i} c={c} delay={i} />)}
-      {hidden && <><div className="card back" /><div className="card back" style={{ animationDelay: '120ms' }} /></>}
+      {cards.map((c, i) => <Card key={i} c={c} mark={win ? (win.includes(i) ? ' win' : ' dim') : ''} />)}
+      {Array.from({ length: backs }, (_, i) => <div key={cards.length + i} className="card back" />)}
       {Array.from({ length: slots }, (_, i) => <div key={'s' + i} className="card slot" />)}
     </div>
   );
 }
 
-function Card({ c, delay }) {
+function Card({ c, mark }) {
   const red = c.s === '♥' || c.s === '♦';
   return (
-    <div className={'card' + (red ? ' red' : '')} style={{ animationDelay: `${Math.min(delay, 2) * 120}ms` }}>
+    <div className={'card face' + (red ? ' red' : '') + mark}>
       <span className="corner">{c.r}<br />{c.s}</span>
       <span className="pip">{c.s}</span>
       <span className="corner br">{c.r}<br />{c.s}</span>

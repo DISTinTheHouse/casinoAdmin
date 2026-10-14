@@ -132,3 +132,30 @@ button:disabled { opacity: .35; cursor: default; }
 .update { margin-top: 28px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; font-size: 18px;
   background: rgba(0,0,0,.3); padding: 12px 18px; border-radius: 16px; }
 .update small { flex-basis: 100%; color: var(--lose); }
+
+/* Ritmo de casino: cartas que salen del zapato del crupier, giro al voltear y la mano ganadora resaltada */
+.poker .card { animation-name: shoe; animation-duration: .55s; }
+.poker .card.slot { animation: none; }
+.poker .dealer .card.face { animation: flip .5s ease-out both; }
+@keyframes shoe { from { transform: translateY(-55vh) rotate(-12deg) scale(.6); opacity: 0; } 60% { opacity: 1; } }
+@keyframes flip { 0% { transform: rotateY(90deg) scale(1.08); } 60% { transform: rotateY(0) scale(1.08); } }
+.poker .card { transition: translate .4s ease, filter .4s ease, box-shadow .4s ease; }
+.exit.away { visibility: hidden; }
+.poker .card.win { box-shadow: 0 0 0 4px var(--gold), 0 0 36px rgba(246,196,83,.75); }
+.poker .card.dim { filter: brightness(.5) saturate(.6); }
+.label.winner b { background: var(--gold); color: #3b2500; box-shadow: 0 0 24px rgba(246,196,83,.6); }
+.poker .controls { min-height: 180px; align-items: center; }
+
+.banner-slot { height: 110px; }
+.result { display: grid; justify-items: center; gap: 8px; }
+.versus { font-size: 20px; color: var(--muted); animation: pop .4s ease both .7s; }
+.versus b { color: var(--ink); }
+.street { font-size: 30px; font-weight: 900; letter-spacing: 6px; text-transform: uppercase; color: var(--gold);
+  text-shadow: 0 2px 12px rgba(0,0,0,.5); animation: pop .35s cubic-bezier(.2,1.6,.4,1) both; }
+.pop { animation: pop .35s cubic-bezier(.2,1.6,.4,1) both; }
+.hint.wait { font-size: 22px; display: flex; align-items: center; justify-content: center; margin: 0; }
+.hint.wait i { font-style: normal; animation: blink 1.2s infinite both; }
+.hint.wait i:nth-child(2) { animation-delay: .2s; } .hint.wait i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 100% { opacity: .2; } 40% { opacity: 1; } }
+@media (max-height: 800px) { .banner-slot { height: 96px; } .street { font-size: 24px; } .versus { font-size: 17px; } .poker .controls { min-height: 154px; } }
+@media (prefers-reduced-motion: reduce) { .poker .card, .poker .dealer .card.face { animation-duration: .01s; } }
