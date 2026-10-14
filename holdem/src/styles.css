@@ -159,3 +159,20 @@ button:disabled { opacity: .35; cursor: default; }
 @keyframes blink { 0%, 100% { opacity: .2; } 40% { opacity: 1; } }
 @media (max-height: 800px) { .banner-slot { height: 96px; } .street { font-size: 24px; } .versus { font-size: 17px; } .poker .controls { min-height: 154px; } }
 @media (prefers-reduced-motion: reduce) { .poker .card, .poker .dealer .card.face { animation-duration: .01s; } }
+
+/* Cuando ganas: destello dorado, confeti, letrero que brilla y el saldo sube contando */
+.confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 50; }
+.win-flash { position: fixed; inset: 0; pointer-events: none; z-index: 40;
+  background: radial-gradient(ellipse at 50% 50%, rgba(255,224,138,.55), rgba(246,196,83,.15) 45%, transparent 75%);
+  animation: winflash 1.8s ease-out both; }
+.win-flash.big { animation: winflash 1.2s ease-out 3 both; }
+@keyframes winflash { 0% { opacity: 0; } 15% { opacity: 1; } 100% { opacity: 0; } }
+.poker .banner.win { font-size: 54px; padding: 6px 44px; color: #3b2500; position: relative; z-index: 45;
+  background: linear-gradient(110deg, #e09a1a 0%, #f6c453 35%, #fff3c4 50%, #f6c453 65%, #e09a1a 100%) 0 0 / 250% 100%;
+  animation: pop .5s cubic-bezier(.2,1.6,.4,1) both .1s, shine 2.2s linear infinite .6s, glow 1.1s ease-in-out infinite alternate .6s; }
+@keyframes shine { to { background-position: -250% 0; } }
+@keyframes glow { from { box-shadow: 0 0 30px rgba(246,196,83,.5); transform: scale(1); } to { box-shadow: 0 0 90px rgba(246,196,83,.95); transform: scale(1.05); } }
+.who .balance { transition: color .3s, text-shadow .3s, transform .3s; transform-origin: right center; }
+.who .balance.up { color: var(--gold); text-shadow: 0 0 24px rgba(246,196,83,.8); transform: scale(1.12); }
+@media (max-height: 800px) { .poker .banner.win { font-size: 42px; } }
+@media (prefers-reduced-motion: reduce) { .confetti, .win-flash { display: none; } }

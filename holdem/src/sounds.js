@@ -35,6 +35,8 @@ export const sfx = {
   deal: play((n = 1) => { for (let i = 0; i < n; i++) swish(i * 0.12); }),
   win: play(() => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.35, { type: 'triangle' }))),
   blackjack: play(() => [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => tone(f, i * 0.08, 0.45, { type: 'triangle' }))),
+  // Lluvia de fichas mientras sube el saldo.
+  payout: play((n = 12) => { for (let i = 0; i < n; i++) { const t = 0.25 + i * 0.09 + Math.random() * 0.04; tone(1700 + Math.random() * 900, t, 0.06, { type: 'triangle', vol: 0.09 }); tone(2500 + Math.random() * 700, t + 0.02, 0.05, { type: 'triangle', vol: 0.06 }); } }),
   push: play(() => tone(440, 0, 0.25, { vol: 0.12 })),
   lose: play(() => { tone(330, 0, 0.3, { vol: 0.1 }); tone(262, 0.18, 0.4, { vol: 0.1 }); }),
 };
