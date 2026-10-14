@@ -4,6 +4,7 @@ import useCardReader from './useCardReader.js';
 import { sfx, soundOn, setSound } from './sounds.js';
 import useUpdate from './update.js';
 import useStaged from './stage.js';
+import { Confetti, useCountUp } from './celebrate.js';
 import { NAMES, handName, winningCards } from './hands.js';
 
 const CHIPS = [1000, 5000, 10000, 50000]; // centavos: $10, $50, $100, $500
@@ -48,14 +49,16 @@ export default function App() {
   // La mano se muestra paso a paso (ver stage.js); los sonidos van al ritmo de lo que aparece.
   const round = state?.round?.game === 'holdem' ? state.round : null;
   const latest = useRef(round);
+  const latestPays = useRef();
+  latestPays.current = state?.holdem?.blindPays;
   latest.current = round;
   const stage = useStaged(round, !!state, (kind) => {
     const r = latest.current;
     if (kind !== 'result') return sfx.deal(1);
     if (!r) return;
     const bet = r.ante + r.blind + r.play;
-    if (r.payout > bet && r.payout - bet >= r.blind * 3) sfx.blackjack();
-    else if (r.payout > bet) sfx.win();
+    if (r.payout > bet && bigHand(r, latestPays.current)) { sfx.blackjack(); sfx.payout(24); }
+    else if (r.payout > bet) { sfx.win(); sfx.payout(12); }
     else if (r.payout === bet) sfx.push();
     else sfx.lose();
   });
@@ -92,13 +95,18 @@ function Header({ state, stage, onReset, onExit }) {
         <div className="who">
           <div className="name">{state.card.name || 'Jugador'}</div>
           {/* Lo ganado se suma al saldo hasta que aparece el resultado, no antes. */}
-          <div className="balance">{money(state.round?.phase === 'done' && !stage.result ? state.card.balance - state.round.payout : state.card.balance)}</div>
+          <Balance value={state.round?.phase === 'done' && !stage.result ? state.card.balance - state.round.payout : state.card.balance} />
           {/* El botón guarda su lugar aunque esté oculto, para que la mesa no brinque al aparecer. */}
           <button className={'exit' + (exitable ? '' : ' away')} onClick={onExit} disabled={!exitable}>Terminar y guardar saldo</button>
         </div>
       )}
     </header>
   );
+}
+
+function Balance({ value }) {
+  const [shown, up] = useCountUp(value);
+  return <div className={'balance' + (up ? ' up' : '')}>{money(shown)}</div>;
 }
 
 function Idle({ onDemo, update }) {
@@ -156,6 +164,9 @@ function Table({ state, stage, call }) {
   // Al final se marcan las cartas que forman la mano ganadora y el resto se oscurece.
   // Con carta alta no se marca nada: casi siempre la decide una carta que comparten los dos.
   const winner = stage.result && round.result !== 'retira' ? (round.result === 'pierde' ? 'dealer' : 'player') : null;
+  const bet0 = round ? round.ante + round.blind + round.play : 0;
+  const won = stage.result && round.payout > bet0;
+  const bigWin = won && bigHand(round, limits.blindPays);
   const marks = winner && (winner === 'dealer' ? round.dealer.hand : round.player.hand) !== 'Carta alta' ? winningCards([...(winner === 'dealer' ? dealer : mine), ...board]) : null;
   const hole = marks && marks.filter((i) => i < 2);
   const onBoard = marks && marks.filter((i) => i >= 2).map((i) => i - 2);
@@ -221,15 +232,19 @@ function Table({ state, stage, call }) {
         )}
       </footer>
       <PayTable pays={state.holdem.blindPays} />
+      {won && <><div key={'f' + round.seedHash} className={'win-flash' + (bigWin ? ' big' : '')} /><Confetti key={round.seedHash} big={bigWin} /></>}
     </main>
   );
 }
+
+// Premio grande = la Ciega paga (escalera o mejor): más confeti y otro sonido.
+const bigHand = (r, pays) => r.result === 'gana' && !!pays?.[NAMES.indexOf(r.player.hand)];
 
 function Result({ round, pays }) {
   const bet = round.ante + round.blind + round.play;
   const blind = round.result === 'gana' && pays[NAMES.indexOf(round.player.hand)];
   const [text, kind] = round.result === 'retira' ? ['Te retiraste', 'lose']
-    : round.payout > bet ? [`¡Ganaste ${money(round.payout - bet)}!`, 'win']
+    : round.payout > bet ? [`${blind ? '¡Gran premio!' : '¡Ganaste!'} +${money(round.payout - bet)}`, 'win']
     : round.payout === bet ? ['Empate', 'push']
     : round.payout > 0 ? [`Gana la casa · regresan ${money(round.payout)}`, 'lose'] : ['Gana la casa', 'lose'];
   return (
